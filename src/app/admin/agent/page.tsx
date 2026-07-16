@@ -283,6 +283,24 @@ export default function PrintAgentMonitorPage() {
           </p>
         </div>
       </div>
+      {/* Download Instructions Card */}
+      <div className="bg-brand-50/50 border border-brand-100 p-5 rounded-2xl text-xs space-y-2">
+        <h3 className="font-extrabold text-brand-900 text-sm">Print Agent Installation Guide</h3>
+        <p className="text-brand-800 leading-relaxed">
+          Choose the right download option based on your computer setup:
+        </p>
+        <ul className="list-disc pl-5 space-y-1.5 text-brand-700">
+          <li>
+            <strong>If Java is already installed:</strong> Simply download and double-click the <strong>JAR file</strong> to run the software immediately.
+          </li>
+          <li>
+            <strong>If Java is not installed:</strong> Download and install Java (JDK 17+) first, and then download and run the <strong>JAR file</strong>.
+          </li>
+          <li>
+            <strong>If the Windows Installer (.exe) is blocked:</strong> Windows Smart App Control may block the unsigned installer. Simply install Java (JDK 17+) on your PC, download the <strong>JAR file</strong>, and run it instead.
+          </li>
+        </ul>
+      </div>
 
       {/* Action download panel and console logger */}
       <div className="card-premium bg-slate-50 border border-slate-100 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">

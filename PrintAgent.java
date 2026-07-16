@@ -265,9 +265,13 @@ public class PrintAgent {
         }
 
         PopupMenu popup = new PopupMenu();
-        MenuItem statusItem = new MenuItem("Status: Connected");
+        MenuItem statusItem = new MenuItem("Status: Active Spools");
         statusItem.setEnabled(false);
         popup.add(statusItem);
+
+        MenuItem settingsItem = new MenuItem("Open Settings / Reconfigure");
+        settingsItem.addActionListener(e -> showSetupWizard());
+        popup.add(settingsItem);
 
         MenuItem runAtStartupItem = new MenuItem("Configure Startup Autostart");
         runAtStartupItem.addActionListener(e -> enableStartupShortcut());

@@ -1,0 +1,23 @@
+node_modules/
+.next/
+.env.local
+.env*.local
+.env
+*.log
+.DS_Store
+out/
+dist/
+
+.vercel
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Windows system files
+desktop.ini
+
+# Build artifacts in root (distributable copies are in public/downloads/)
+/KrishnaPrintAgent.jar
+/KrishnaPrintAgentSetup.exe
+*.class
+manifest.txt
+default_config.properties

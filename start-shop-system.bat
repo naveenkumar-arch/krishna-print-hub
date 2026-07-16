@@ -1,0 +1,33 @@
+@echo off
+title Krishna Students Print Hub - Shop Systems Launch
+echo ====================================================
+echo   KRISHNA STUDENTS PRINT HUB - AUTO-LAUNCH SERVER
+echo ====================================================
+echo.
+
+echo Checking Node dependencies in the backend. Please wait...
+if not exist node_modules\whatsapp-web.js (
+    echo.
+    echo [SETUP] WhatsApp modules are missing. Installing now...
+    echo [SETUP] This runs once in the backend and may take a moment.
+    call npm install whatsapp-web.js qrcode-terminal --no-audit --no-fund
+    echo [SETUP] Installation complete!
+) else (
+    echo [SETUP] Dependencies verified successfully.
+)
+
+echo.
+echo [1/2] Starting Local Print Agent (Printer Queue)...
+start "Print Agent" cmd /k "node print-agent.js"
+
+echo.
+echo [2/2] Starting WhatsApp Bot Controller (Chatbot)...
+start "WhatsApp Bot" cmd /k "node whatsapp-bot.js"
+
+echo.
+echo ====================================================
+echo   SUCCESS: Launching services in separate windows!
+echo   - Keep them running while the shop is open.
+echo ====================================================
+echo.
+pause

@@ -140,6 +140,7 @@ public class PrintAgent {
         JButton testBtn = new JButton("Test Server Connection");
         testBtn.setBounds(30, 200, 190, 30);
         testBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        testBtn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
         testBtn.setBackground(new java.awt.Color(226, 232, 240)); // Slate-200
         testBtn.setForeground(new java.awt.Color(71, 85, 105)); // Slate-600
         testBtn.setFocusPainted(false);
@@ -173,6 +174,7 @@ public class PrintAgent {
         JButton testPrintBtn = new JButton("Print Test Page");
         testPrintBtn.setBounds(230, 200, 190, 30);
         testPrintBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        testPrintBtn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
         testPrintBtn.setBackground(new java.awt.Color(226, 232, 240));
         testPrintBtn.setForeground(new java.awt.Color(71, 85, 105));
         testPrintBtn.setFocusPainted(false);
@@ -207,6 +209,7 @@ public class PrintAgent {
         JButton saveBtn = new JButton("Save & Connect");
         saveBtn.setBounds(30, 260, 390, 35);
         saveBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        saveBtn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
         saveBtn.setBackground(new Color(124, 58, 237)); // Purple Accent
         saveBtn.setForeground(Color.WHITE);
         saveBtn.setFocusPainted(false);

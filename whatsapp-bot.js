@@ -36,7 +36,7 @@ function createOrderInBackend(orderData, callback) {
     const payload = JSON.stringify(orderData);
     
     const options = {
-        hostname: 'krishna-print-hub.vercel.app',
+        hostname: 'krishna-students-print-hub.vercel.app',
         port: 443,
         path: '/api/orders',
         method: 'POST',
@@ -276,7 +276,7 @@ client.on('message', async msg => {
                 paymentMethod: 'online'
             }, async (err, result) => {
                 if (err || !result || !result.success) {
-                    const fallbackUrl = `https://krishna-print-hub.vercel.app/upload`;
+                    const fallbackUrl = `https://krishna-students-print-hub.vercel.app/upload`;
                     await msg.reply(`👉 Complete payment securely using this checkout link:\n${fallbackUrl}\n\n*Once payment is done, your job will print automatically!*`);
                 } else {
                     const payUrl = result.paymentLinkUrl;

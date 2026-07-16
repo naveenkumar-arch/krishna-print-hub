@@ -15,7 +15,7 @@ const path = require('path');
 
 const PORT = 4000;
 const POLL_INTERVAL = 4000; // Poll for jobs every 4 seconds
-const BACKEND_HOST = 'krishna-print-hub.vercel.app';
+const BACKEND_HOST = 'krishna-students-print-hub.vercel.app';
 let targetPrinterName = "";
 
 console.log("====================================================");

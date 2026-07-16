@@ -21,3 +21,6 @@ desktop.ini
 *.class
 manifest.txt
 default_config.properties
+
+.vercel
+.env*

@@ -11,7 +11,7 @@ import com.sun.net.httpserver.*;
 
 public class PrintAgent {
     // Default API endpoint setups (points to your Vercel deployment URL)
-    private static String BASE_URL = "https://krishna-print-hub.vercel.app";
+    private static String BASE_URL = "https://krishna-students-print-hub.vercel.app";
     private static String AUTH_TOKEN = "";
     private static String DEFAULT_PRINTER = "";
     private static boolean AUTO_START_ENABLED = true;
@@ -47,7 +47,7 @@ public class PrintAgent {
         if (configFile.exists()) {
             try (FileInputStream fis = new FileInputStream(configFile)) {
                 prop.load(fis);
-                BASE_URL = prop.getProperty("site_url", BASE_URL);
+                BASE_URL = prop.getProperty("site_url", BASE_URL).trim();
                 AUTH_TOKEN = prop.getProperty("connection_key", prop.getProperty("auth_token", ""));
                 DEFAULT_PRINTER = prop.getProperty("default_printer", "");
                 AUTO_START_ENABLED = Boolean.parseBoolean(prop.getProperty("autostart", "true"));

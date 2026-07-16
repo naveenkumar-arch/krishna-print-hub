@@ -195,7 +195,22 @@ export const db = {
 
   getRazorpayConfig: async (): Promise<RazorpayConfig> => {
     const data = await readDb();
-    return data.razorpayConfig;
+    
+    // Fallback to environment variables if database config is empty
+    if (!data.razorpayConfig || !data.razorpayConfig.keyId) {
+      const envKeyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
+      const envKeySecret = process.env.RAZORPAY_KEY_SECRET || "";
+      if (envKeyId && envKeySecret) {
+        return {
+          keyId: envKeyId,
+          keySecret: envKeySecret,
+          webhookSecret: "",
+          isConfigured: true,
+          testMode: true
+        };
+      }
+    }
+    return data.razorpayConfig || mockRazorpayConfig;
   },
 
   saveRazorpayConfig: async (config: RazorpayConfig): Promise<RazorpayConfig> => {

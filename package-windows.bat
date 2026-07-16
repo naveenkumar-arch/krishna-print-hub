@@ -26,10 +26,16 @@ del PrintAgent*.class
 :: 3. Run Inno Setup Compiler if installed to package the .exe
 echo Checking for Inno Setup compiler...
 if not exist public\downloads mkdir public\downloads
-if not exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" goto NO_INNO
+set "INNO_PATH="
+if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "INNO_PATH=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if exist "%ProgramFiles(x86)%\ISCC.exe" set "INNO_PATH=%ProgramFiles(x86)%\ISCC.exe"
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "INNO_PATH=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if exist "%ProgramFiles%\ISCC.exe" set "INNO_PATH=%ProgramFiles%\ISCC.exe"
+
+if "%INNO_PATH%"=="" goto NO_INNO
 
 echo Compiling Windows Installer executable (.exe)...
-"%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" setup.iss
+"%INNO_PATH%" setup.iss
 copy /Y KrishnaPrintAgentSetup.exe public\downloads\KrishnaPrintAgentSetup.exe
 copy /Y KrishnaPrintAgent.jar public\downloads\KrishnaPrintAgent.jar
 echo.

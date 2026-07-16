@@ -153,6 +153,17 @@ client.on('ready', () => {
 client.on('message', async msg => {
     const chat = await msg.getChat();
     const contact = await msg.getContact();
+    
+    // Ignore group chats and status updates
+    if (chat.isGroup || msg.from.includes('status')) {
+        return;
+    }
+
+    // Ignore personal contacts (family, friends, etc. saved in address book)
+    if (contact.isMyContact) {
+        return;
+    }
+
     const from = msg.from;
     const body = msg.body.trim();
 

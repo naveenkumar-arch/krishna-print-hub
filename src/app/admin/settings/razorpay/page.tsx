@@ -72,12 +72,29 @@ export default function AdminRazorpayPage() {
       return;
     }
     setVerifying(true);
-    toast.loading("Verifying key credentials on Razorpay API...", { id: "test-con" });
+    const toastId = toast.loading("Verifying credentials on Razorpay API...");
 
-    setTimeout(() => {
-      setVerifying(false);
-      toast.success("Credentials verified. Webhook signature validated successfully!", { id: "test-con" });
-    }, 2000);
+    fetch('/api/razorpay-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keyId: config.keyId,
+        keySecret: config.keySecret
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setVerifying(false);
+        if (data.success) {
+          toast.success(data.message, { id: toastId });
+        } else {
+          toast.error("Verification failed: " + data.error, { id: toastId });
+        }
+      })
+      .catch(err => {
+        setVerifying(false);
+        toast.error("Network error: " + (err.message || "Failed to reach verification endpoint"), { id: toastId });
+      });
   };
 
   return (

@@ -40,19 +40,19 @@ const defaultSchema: Schema = {
 };
 
 // Check if Vercel KV environment variables are configured
-const isKVEnabled = !!process.env.KV_REST_API_URL && !!process.env.KV_REST_API_TOKEN;
+const rawUrl = (process.env.KV_REST_API_URL || "").replace(/"/g, "").trim();
+const rawToken = (process.env.KV_REST_API_TOKEN || "").replace(/"/g, "").trim();
+const isKVEnabled = !!rawUrl && !!rawToken;
 const KV_KEY = 'krishna_print_hub_db';
 
 async function kvExecute(command: any[]): Promise<any> {
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
+  if (!isKVEnabled) return null;
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(rawUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${rawToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(command),

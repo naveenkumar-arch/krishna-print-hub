@@ -4,9 +4,10 @@ import { db } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const config = await db.getRazorpayConfig();
+    const keySecret = config.keySecret;
     if (!keySecret) {
-      console.error("[Verify Payment API] Razorpay Key Secret not configured in environment variables.");
+      console.error("[Verify Payment API] Razorpay Key Secret not configured in database or env.");
       return NextResponse.json({ error: "Razorpay credentials not configured" }, { status: 401 });
     }
 

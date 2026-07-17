@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
+import { db } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const config = await db.getRazorpayConfig();
+    const keyId = config.keyId;
+    const keySecret = config.keySecret;
 
     if (!keyId || !keySecret) {
-      console.error("[Create Order API] Razorpay keys not configured in environment variables.");
+      console.error("[Create Order API] Razorpay credentials not configured in database or env.");
       return NextResponse.json({ error: "Razorpay credentials not configured" }, { status: 401 });
     }
 

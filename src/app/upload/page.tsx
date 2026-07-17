@@ -30,6 +30,7 @@ export default function UploadPage() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponCode, setCouponCode] = useState<string>('');
   const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null);
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string>('');
 
   useEffect(() => {
     fetch('/api/config', { cache: 'no-store' })
@@ -39,6 +40,9 @@ export default function UploadPage() {
         if (data.pricingConfig) setPricing(data.pricingConfig);
         if (data.printRules) setRules(data.printRules);
         if (data.coupons) setCoupons(data.coupons);
+        if (data.razorpayConfig && data.razorpayConfig.keyId) {
+          setRazorpayKeyId(data.razorpayConfig.keyId);
+        }
       })
       .catch(() => {
         const savedShop = localStorage.getItem('shopSettings');
@@ -269,9 +273,7 @@ export default function UploadPage() {
       }
 
       // Check if Razorpay keys are configured in environment or settings
-      const razorConfigRaw = localStorage.getItem('razorpayConfig');
-      const razorConfig = razorConfigRaw ? JSON.parse(razorConfigRaw) : null;
-      const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || (razorConfig?.isConfigured ? razorConfig.keyId : null);
+      const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || razorpayKeyId;
 
       if (keyId) {
         const scriptLoaded = await loadRazorpayScript();

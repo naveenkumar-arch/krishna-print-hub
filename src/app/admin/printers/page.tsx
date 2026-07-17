@@ -43,6 +43,7 @@ export default function AdminPrintersPage() {
 
   // Modal setup
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingPrinterId, setEditingPrinterId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newConnectionType, setNewConnectionType] = useState<'USB' | 'LAN' | 'WiFi'>('USB');
   const [newPortOrIp, setNewPortOrIp] = useState('USB001');
@@ -143,29 +144,21 @@ export default function AdminPrintersPage() {
     }
   };
 
-  const handleAddPrinter = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newName || !newModel) {
-      toast.error("Please fill in the printer name and driver model.");
-      return;
-    }
-    const newP: PrinterConfig = {
-      id: `custom-${Math.random()}`,
-      name: newName,
-      brand: "Manual Connected",
-      model: newModel,
-      status: 'idle' as const,
-      connectionType: newConnectionType,
-      ipAddress: newConnectionType !== 'USB' ? newPortOrIp : undefined,
-      inkLevels: { black: 100 },
-      paperLevels: { A4: 500 },
-      isDefault: printers.length === 0,
-      supportsColor: newSupportsColor,
-      supportsA3: newSupportsA3,
-      isHighSpeed: newIsHighSpeed
-    };
-    
-    const updated = [...printers, newP];
+  const handleEditClick = (p: PrinterConfig) => {
+    setEditingPrinterId(p.id);
+    setNewName(p.name);
+    setNewModel(p.model);
+    setNewConnectionType(p.connectionType);
+    setNewPortOrIp(p.ipAddress || 'USB001');
+    setNewSupportsColor(p.supportsColor || false);
+    setNewSupportsA3(p.supportsA3 || false);
+    setNewIsHighSpeed(p.isHighSpeed || false);
+    setShowAddModal(true);
+  };
+
+  const handleDeletePrinter = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this printer?")) return;
+    const updated = printers.filter(p => p.id !== id);
     setPrinters(updated);
     localStorage.setItem('customPrinters', JSON.stringify(updated));
 
@@ -175,12 +168,74 @@ export default function AdminPrintersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ printers: updated })
       });
-      toast.success(`Successfully linked ${newName} via ${newConnectionType}!`);
+      toast.success("Printer deleted successfully!");
+    } catch (err) {
+      toast.error("Failed to sync deletion with Vercel.");
+    }
+  };
+
+  const handleAddPrinter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName || !newModel) {
+      toast.error("Please fill in the printer name and driver model.");
+      return;
+    }
+
+    let updated: PrinterConfig[];
+
+    if (editingPrinterId) {
+      // Edit existing printer
+      updated = printers.map(p => {
+        if (p.id === editingPrinterId) {
+          return {
+            ...p,
+            name: newName,
+            model: newModel,
+            connectionType: newConnectionType,
+            ipAddress: newConnectionType !== 'USB' ? newPortOrIp : undefined,
+            supportsColor: newSupportsColor,
+            supportsA3: newSupportsA3,
+            isHighSpeed: newIsHighSpeed
+          };
+        }
+        return p;
+      });
+    } else {
+      // Create new printer
+      const newP: PrinterConfig = {
+        id: `custom-${Math.random()}`,
+        name: newName,
+        brand: "Manual Connected",
+        model: newModel,
+        status: 'idle' as const,
+        connectionType: newConnectionType,
+        ipAddress: newConnectionType !== 'USB' ? newPortOrIp : undefined,
+        inkLevels: { black: 100 },
+        paperLevels: { A4: 500 },
+        isDefault: printers.length === 0,
+        supportsColor: newSupportsColor,
+        supportsA3: newSupportsA3,
+        isHighSpeed: newIsHighSpeed
+      };
+      updated = [...printers, newP];
+    }
+    
+    setPrinters(updated);
+    localStorage.setItem('customPrinters', JSON.stringify(updated));
+
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printers: updated })
+      });
+      toast.success(editingPrinterId ? "Printer configuration updated!" : `Successfully linked ${newName} via ${newConnectionType}!`);
     } catch (err) {
       toast.error("Saved locally, but failed to sync printer with Vercel config.");
     }
     
     setShowAddModal(false);
+    setEditingPrinterId(null);
     setNewName('');
     setNewModel('');
     setNewSupportsColor(false);
@@ -433,6 +488,18 @@ export default function AdminPrintersPage() {
                 </button>
               )}
               <button 
+                onClick={() => handleEditClick(p)}
+                className="bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-bold py-1.5 px-3 rounded-lg"
+              >
+                Edit
+              </button>
+              <button 
+                onClick={() => handleDeletePrinter(p.id)}
+                className="bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold py-1.5 px-3 rounded-lg"
+              >
+                Delete
+              </button>
+              <button 
                 onClick={() => handleTestPrint(p.id)}
                 disabled={loadingTest === p.id}
                 className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
@@ -449,7 +516,9 @@ export default function AdminPrintersPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-slate-200 shadow-xl space-y-4">
             <div>
-              <h3 className="font-extrabold text-slate-900 text-base">Pair Local Printer</h3>
+              <h3 className="font-extrabold text-slate-900 text-base">
+                {editingPrinterId ? "Edit Printer Configuration" : "Pair Local Printer"}
+              </h3>
               <p className="text-slate-500 text-[10px]">Configure connection options to route printed pages dynamically.</p>
             </div>
             
@@ -541,7 +610,15 @@ export default function AdminPrintersPage() {
               <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
                 <button 
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingPrinterId(null);
+                    setNewName('');
+                    setNewModel('');
+                    setNewSupportsColor(false);
+                    setNewSupportsA3(false);
+                    setNewIsHighSpeed(false);
+                  }}
                   className="btn-secondary text-[11px] py-2 px-4 bg-white"
                 >
                   Cancel
@@ -550,7 +627,7 @@ export default function AdminPrintersPage() {
                   type="submit"
                   className="btn-primary text-[11px] py-2 px-4"
                 >
-                  Save Connection
+                  {editingPrinterId ? "Save Changes" : "Save Connection"}
                 </button>
               </div>
             </form>

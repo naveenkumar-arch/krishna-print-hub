@@ -26,7 +26,8 @@ public class PrintAgent {
 
     public static void main(String[] args) {
         try {
-            PrintStream fileOut = new PrintStream(new FileOutputStream("print-agent.log", true));
+            String logPath = System.getProperty("user.home") + File.separator + "print-agent.log";
+            PrintStream fileOut = new PrintStream(new FileOutputStream(logPath, true));
             System.setOut(fileOut);
             System.setErr(fileOut);
         } catch (Exception e) {}

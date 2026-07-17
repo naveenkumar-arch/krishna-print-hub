@@ -722,15 +722,21 @@ public class PrintAgent {
     }
 
     private static void printToWindowsDevice(File ticketFile, String printerName) throws Exception {
-        String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
         String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
+        String fullCmd;
+        if (printerName != null && !printerName.trim().isEmpty()) {
+            String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
+            fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
+        } else {
+            fullCmd = spoolCmd;
+        }
         
         System.out.println("Executing Windows PowerShell spools...");
         
         ProcessBuilder pb = new ProcessBuilder(
             "powershell", 
             "-Command", 
-            setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd
+            fullCmd
         );
         pb.redirectErrorStream(true);
         Process p = pb.start();
@@ -862,10 +868,15 @@ public class PrintAgent {
     private static List<Map<String, Object>> parsePrintersConfig(String json) {
         List<Map<String, Object>> list = new ArrayList<>();
         try {
-            int index = json.indexOf("\"printers\":[");
+            int index = json.indexOf("\"printers\":");
             if (index == -1) return list;
-            String content = json.substring(index + 11);
-            String[] blocks = content.split("\\{");
+            int startBracket = json.indexOf("[", index);
+            if (startBracket == -1) return list;
+            int endBracket = json.indexOf("]", startBracket);
+            if (endBracket == -1) return list;
+            
+            String arrayContent = json.substring(startBracket + 1, endBracket);
+            String[] blocks = arrayContent.split("\\{");
             for (String block : blocks) {
                 if (!block.contains("}")) continue;
                 Map<String, Object> map = new HashMap<>();

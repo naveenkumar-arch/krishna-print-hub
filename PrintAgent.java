@@ -39,7 +39,8 @@ public class PrintAgent {
         readConfig();
 
         // 2. If no config file is found, launch the wizard setup panel
-        File configFile = new File("config.properties");
+        String configPath = System.getProperty("user.home") + File.separator + "config.properties";
+        File configFile = new File(configPath);
         if (!configFile.exists()) {
             SwingUtilities.invokeLater(() -> showSetupWizard());
         } else {
@@ -52,7 +53,8 @@ public class PrintAgent {
 
     private static void readConfig() {
         Properties prop = new Properties();
-        File configFile = new File("config.properties");
+        String configPath = System.getProperty("user.home") + File.separator + "config.properties";
+        File configFile = new File(configPath);
         if (configFile.exists()) {
             try (FileInputStream fis = new FileInputStream(configFile)) {
                 prop.load(fis);
@@ -73,7 +75,8 @@ public class PrintAgent {
         prop.setProperty("connection_key", AUTH_TOKEN);
         prop.setProperty("default_printer", DEFAULT_PRINTER);
         prop.setProperty("autostart", String.valueOf(AUTO_START_ENABLED));
-        try (FileOutputStream fos = new FileOutputStream("config.properties")) {
+        String configPath = System.getProperty("user.home") + File.separator + "config.properties";
+        try (FileOutputStream fos = new FileOutputStream(configPath)) {
             prop.store(fos, "Krishna Print Hub Configuration");
             System.out.println("Saved config properties successfully.");
         } catch (IOException e) {

@@ -24,6 +24,13 @@ public class PrintAgent {
     private static String lastPingTime = "";
 
     public static void main(String[] args) {
+        try {
+            PrintStream fileOut = new PrintStream(new FileOutputStream("print-agent.log", true));
+            System.setOut(fileOut);
+            System.setErr(fileOut);
+        } catch (Exception e) {}
+
+        System.out.println("\n--- Print Agent Session Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + " ---");
         System.out.println("=== Starting Krishna Students Print Hub Agent ===");
         
         // 1. Read existing config properties if saved

@@ -22,6 +22,7 @@ public class PrintAgent {
     private static TrayIcon trayIcon;
     private static List<Map<String, Object>> remotePrinters = new ArrayList<>();
     private static String lastPingTime = "";
+    private static boolean hasLoggedPrinters = false;
 
     public static void main(String[] args) {
         try {
@@ -427,6 +428,13 @@ public class PrintAgent {
         StringBuilder printersJson = new StringBuilder();
         printersJson.append("[");
         List<String> localPrinters = getWindowsPrinters();
+        if (!hasLoggedPrinters) {
+            System.out.println("Local Printers Detected by WMI Query:");
+            for (String printer : localPrinters) {
+                System.out.println("  -> " + printer);
+            }
+            hasLoggedPrinters = true;
+        }
         for (int i = 0; i < localPrinters.size(); i++) {
             String raw = localPrinters.get(i);
             String[] parts = raw.split("\\|");

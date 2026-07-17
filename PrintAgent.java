@@ -709,13 +709,18 @@ public class PrintAgent {
         pb.redirectErrorStream(true);
         Process p = pb.start();
         
+        StringBuilder errorMsg = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 System.out.println("PowerShell: " + line);
+                errorMsg.append(line).append("\n");
             }
         }
-        p.waitFor();
+        int exitCode = p.waitFor();
+        if (exitCode != 0) {
+            throw new Exception("PowerShell execution failed (Exit Code: " + exitCode + "). Output: " + errorMsg.toString());
+        }
     }
 
     private static void updateOrderStatus(String id, String status) {

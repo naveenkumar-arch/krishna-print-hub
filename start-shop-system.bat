@@ -17,17 +17,16 @@ if not exist node_modules\whatsapp-web.js (
 )
 
 echo.
-echo [1/2] Starting Local Print Agent (Printer Queue)...
-start "Print Agent" cmd /k "node print-agent.js"
-
+echo [1/2] Note: The Print Queue is now handled by the standalone Java Desktop GUI app.
+echo       Ensure the "Krishna Students Print Agent" is running in your Windows taskbar.
 echo.
 echo [2/2] Starting WhatsApp Bot Controller (Chatbot)...
 start "WhatsApp Bot" cmd /k "node whatsapp-bot.js"
 
 echo.
 echo ====================================================
-echo   SUCCESS: Launching services in separate windows!
-echo   - Keep them running while the shop is open.
+echo   SUCCESS: Launching WhatsApp Chatbot!
+echo   - Keep this window running while the shop is open.
 echo ====================================================
 echo.
 pause

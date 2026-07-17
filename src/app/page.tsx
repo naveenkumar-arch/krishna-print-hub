@@ -153,6 +153,25 @@ export default function LandingPage() {
     setWaOrderCode(code);
 
     try {
+      let fileUrl = '';
+      if (simulatedFile) {
+        toast.loading("Uploading simulated document...", { id: "upload-wa-file" });
+        const uploadData = new FormData();
+        uploadData.append('file', simulatedFile);
+        
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: uploadData
+        });
+        const uploadJson = await uploadRes.json();
+        if (uploadJson.success) {
+          fileUrl = uploadJson.fileUrl;
+          toast.success("Simulated document uploaded!", { id: "upload-wa-file" });
+        } else {
+          toast.error("Failed to upload simulated document.", { id: "upload-wa-file" });
+        }
+      }
+
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -162,6 +181,7 @@ export default function LandingPage() {
           customerPhone,
           fileName: simulatedFile ? simulatedFile.name : 'wa_document.pdf',
           fileSize: simulatedFile ? parseFloat((simulatedFile.size / (1024 * 1024)).toFixed(2)) : 0.8,
+          fileUrl: fileUrl,
           pages: simulatedPages,
           copies: simulatedCopies,
           paperSize: 'A4',

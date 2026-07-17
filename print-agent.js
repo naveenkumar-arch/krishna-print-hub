@@ -221,25 +221,80 @@ function downloadDoc(fileUrl, destPath, callback) {
   });
 }
 
-function spoolToWindows(filePath, callback) {
-  // PowerShell printing: print target file directly to Windows printer
-  let printCmd = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
-  if (targetPrinterName) {
-    console.log(`🎯 [Spooler] Targeting printer device: ${targetPrinterName}`);
-    printCmd = `powershell -Command "Set-DefaultPrinter -Name '${targetPrinterName}'; Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
-  } else {
-    console.log(`🎯 [Spooler] Targeting system default printer...`);
-  }
+const helperPath = path.join(process.env.USERPROFILE || process.env.HOMEPATH || process.env.HOME || 'C:\\', 'PDFtoPrinter.exe');
 
-  console.log(`⚡ [Spooler] Executing Windows printer command...`);
+function ensurePrinterUtility(callback) {
+  if (fs.existsSync(helperPath)) {
+    try {
+      const stats = fs.statSync(helperPath);
+      if (stats.size > 1000000) {
+        return callback(null);
+      }
+    } catch (e) {}
+  }
   
-  exec(printCmd, (printErr) => {
-    if (printErr) {
-      console.error(`❌ [Spooler] Windows Print Spooler returned error:`, printErr.message);
+  console.log("📥 [Spooler] Downloading PDF printing helper utility...");
+  const file = fs.createWriteStream(helperPath);
+  
+  const download = (url) => {
+    https.get(url, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+        // Follow redirect
+        return download(res.headers.location);
+      }
+      if (res.statusCode !== 200) {
+        return callback(new Error(`Server returned ${res.statusCode}`));
+      }
+      res.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        console.log(`🟢 [Spooler] Helper utility downloaded to: ${helperPath}`);
+        callback(null);
+      });
+    }).on('error', (err) => {
+      fs.unlink(helperPath, () => {});
+      callback(err);
+    });
+  };
+  
+  download("https://github.com/emendelson/pdftoprinter/raw/main/PDFtoPrinter.exe");
+}
+
+function spoolToWindows(filePath, callback) {
+  ensurePrinterUtility((err) => {
+    const isPdf = filePath.toLowerCase().endsWith('.pdf');
+    const helperExists = fs.existsSync(helperPath);
+
+    let printCmd;
+    if (isPdf && helperExists) {
+      if (targetPrinterName) {
+        console.log(`🎯 [Spooler] Targeting printer device using PDFtoPrinter: ${targetPrinterName}`);
+        printCmd = `powershell -Command "& '${helperPath}' '${filePath}' '${targetPrinterName}'"`;
+      } else {
+        console.log(`🎯 [Spooler] Targeting system default printer using PDFtoPrinter...`);
+        printCmd = `powershell -Command "& '${helperPath}' '${filePath}'"`;
+      }
     } else {
-      console.log(`🟢 [Spooler] Physical spool successfully queued to Xerox/office printer!`);
+      console.log(`🎯 [Spooler] PDFtoPrinter fallback or non-PDF file. Using Verb Print.`);
+      printCmd = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+      if (targetPrinterName) {
+        console.log(`🎯 [Spooler] Targeting printer device: ${targetPrinterName}`);
+        printCmd = `powershell -Command "Set-DefaultPrinter -Name '${targetPrinterName}'; Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+      } else {
+        console.log(`🎯 [Spooler] Targeting system default printer...`);
+      }
     }
-    callback(printErr);
+
+    console.log(`⚡ [Spooler] Executing Windows printer command...`);
+    
+    exec(printCmd, (printErr) => {
+      if (printErr) {
+        console.error(`❌ [Spooler] Windows Print Spooler returned error:`, printErr.message);
+      } else {
+        console.log(`🟢 [Spooler] Physical spool successfully queued!`);
+      }
+      callback(printErr);
+    });
   });
 }
 

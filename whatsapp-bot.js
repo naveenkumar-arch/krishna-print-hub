@@ -99,6 +99,63 @@ function getPrintRules() {
     return rules;
 }
 
+// Helper to upload media file to backend
+function uploadFileToBackend(fileName, fileBase64, callback) {
+    try {
+        const fileBuffer = Buffer.from(fileBase64, 'base64');
+        const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+        
+        let mimeType = 'application/pdf';
+        if (fileName.toLowerCase().endsWith('.png')) mimeType = 'image/png';
+        else if (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg')) mimeType = 'image/jpeg';
+        
+        const payload = Buffer.concat([
+            Buffer.from(`--${boundary}\r\n`),
+            Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n`),
+            Buffer.from(`Content-Type: ${mimeType}\r\n\r\n`),
+            fileBuffer,
+            Buffer.from(`\r\n--${boundary}--\r\n`)
+        ]);
+
+        const options = {
+            hostname: 'krishna-students-print-hub.vercel.app',
+            port: 443,
+            path: '/api/upload',
+            method: 'POST',
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                'Content-Length': payload.length
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', (chunk) => body += chunk);
+            res.on('end', () => {
+                try {
+                    const parsed = JSON.parse(body);
+                    if (parsed && parsed.success && parsed.fileUrl) {
+                        callback(null, parsed.fileUrl);
+                    } else {
+                        callback(new Error(parsed.error || 'Upload failed'));
+                    }
+                } catch (e) {
+                    callback(e);
+                }
+            });
+        });
+
+        req.on('error', (e) => {
+            callback(e);
+        });
+
+        req.write(payload);
+        req.end();
+    } catch (err) {
+        callback(err);
+    }
+}
+
 console.log("====================================================");
 console.log("    KRISHNA STUDENTS PRINT HUB - WHATSAPP BOT       ");
 console.log("====================================================");
@@ -272,51 +329,61 @@ client.on('message', async msg => {
         const rate = state.type === 'color' ? (pricing.A4_Color || 10.00) : (pricing.A4_BW || 2.00);
         const total = Math.round(rate * state.pages * state.copies);
 
-        if (body === '1') {
-            state.step = 'paying';
-            // Register online order
-            createOrderInBackend({
-                customerName: contact.pushname || "WhatsApp Customer",
-                customerPhone: from,
-                fileName: state.file ? state.file.name : 'document.pdf',
-                pages: state.pages,
-                copies: state.copies,
-                colorMode: state.type,
-                paperSize: 'A4',
-                source: 'whatsapp',
-                paymentMethod: 'online'
-            }, async (err, result) => {
-                if (err || !result || !result.success) {
-                    const fallbackUrl = `https://krishna-students-print-hub.vercel.app/upload`;
-                    await msg.reply(`👉 Complete payment securely using this checkout link:\n${fallbackUrl}\n\n*Once payment is done, your job will print automatically!*`);
-                } else {
-                    const payUrl = result.paymentLinkUrl;
-                    await msg.reply(`👉 Complete payment securely using this checkout link:\n${payUrl}\n\n*Once payment is done, your job will print automatically!*`);
-                }
-            });
-        } 
-        else if (body === '2') {
-            // Register cash order
-            createOrderInBackend({
-                customerName: contact.pushname || "WhatsApp Customer",
-                customerPhone: from,
-                fileName: state.file ? state.file.name : 'document.pdf',
-                pages: state.pages,
-                copies: state.copies,
-                colorMode: state.type,
-                paperSize: 'A4',
-                source: 'whatsapp',
-                paymentMethod: 'cash'
-            }, async (err, result) => {
-                // Reset session to idle
-                sessions[from] = { step: 'idle', file: null, pages: 1, copies: 1, type: 'bw' };
-
-                if (err || !result || !result.success) {
-                    await msg.reply(`❌ Failed to register order. Please attach your document again to restart.`);
-                } else {
-                    await msg.reply(`💰 *Cash at Counter Selected!*\n\n📝 *Order Code:* ${result.order.id}\n💵 *Total Due:* ₹${total.toFixed(2)}\n\n👉 *Please pay cash at the print counter.* The shop owner will approve and release your prints once paid.`);
-                }
-            });
+        if (body === '1' || body === '2') {
+            const isOnline = body === '1';
+            if (isOnline) {
+                state.step = 'paying';
+            }
+            
+            // Send typing indicator / waiting msg
+            await msg.reply("⏳ Uploading your document to the printing queue...");
+            
+            const proceedOrder = (uploadedUrl) => {
+                createOrderInBackend({
+                    customerName: contact.pushname || "WhatsApp Customer",
+                    customerPhone: from,
+                    fileName: state.file ? state.file.name : 'document.pdf',
+                    fileUrl: uploadedUrl || '',
+                    pages: state.pages,
+                    copies: state.copies,
+                    colorMode: state.type,
+                    paperSize: 'A4',
+                    source: 'whatsapp',
+                    paymentMethod: isOnline ? 'online' : 'cash'
+                }, async (err, result) => {
+                    if (!isOnline) {
+                        // Reset session to idle for cash payment
+                        sessions[from] = { step: 'idle', file: null, pages: 1, copies: 1, type: 'bw' };
+                    }
+                    
+                    if (err || !result || !result.success) {
+                        if (isOnline) {
+                            sessions[from] = { step: 'idle', file: null, pages: 1, copies: 1, type: 'bw' };
+                        }
+                        await msg.reply(`❌ Failed to register order. Please attach your document again to restart.`);
+                    } else {
+                        if (isOnline) {
+                            const payUrl = result.paymentLinkUrl;
+                            await msg.reply(`👉 Complete payment securely using this checkout link:\n${payUrl}\n\n*Once payment is done, your job will print automatically!*`);
+                        } else {
+                            await msg.reply(`💰 *Cash at Counter Selected!*\n\n📝 *Order Code:* ${result.order.id}\n💵 *Total Due:* ₹${total.toFixed(2)}\n\n👉 *Please pay cash at the print counter.* The shop owner will approve and release your prints once paid.`);
+                        }
+                    }
+                });
+            };
+            
+            if (state.file && state.file.data) {
+                uploadFileToBackend(state.file.name, state.file.data, (uploadErr, fileUrl) => {
+                    if (uploadErr) {
+                        console.error("WhatsApp bot upload error:", uploadErr.message);
+                        proceedOrder(''); // Proceed anyway without fileUrl
+                    } else {
+                        proceedOrder(fileUrl);
+                    }
+                });
+            } else {
+                proceedOrder('');
+            }
         } 
         else {
             await msg.reply(`⚠️ Invalid option. Please reply with:\n*1* for Pay Online\n*2* for Cash at Counter`);

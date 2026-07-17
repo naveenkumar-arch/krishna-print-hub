@@ -38,6 +38,9 @@ public class PrintAgent {
         System.out.println("\n--- Print Agent Session Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + " ---");
         System.out.println("=== Starting Krishna Students Print Hub Agent ===");
         
+        // Start PDF printing helper utility download in the background
+        new Thread(() -> ensurePrinterUtility()).start();
+
         // 1. Read existing config properties if saved
         readConfig();
 
@@ -723,13 +726,28 @@ public class PrintAgent {
     }
 
     private static void printToWindowsDevice(File ticketFile, String printerName) throws Exception {
-        String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
+        // Ensure the helper utility is downloaded
+        ensurePrinterUtility();
+
+        File helperExe = new File(System.getProperty("user.home") + File.separator + "PDFtoPrinter.exe");
         String fullCmd;
-        if (printerName != null && !printerName.trim().isEmpty()) {
-            String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
-            fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
+        
+        if (ticketFile.getName().toLowerCase().endsWith(".pdf") && helperExe.exists()) {
+            if (printerName != null && !printerName.trim().isEmpty()) {
+                fullCmd = "& \"" + helperExe.getAbsolutePath() + "\" \"" + ticketFile.getAbsolutePath() + "\" \"" + printerName + "\"";
+            } else {
+                fullCmd = "& \"" + helperExe.getAbsolutePath() + "\" \"" + ticketFile.getAbsolutePath() + "\"";
+            }
+            System.out.println("Using PDFtoPrinter utility for PDF document.");
         } else {
-            fullCmd = spoolCmd;
+            String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
+            if (printerName != null && !printerName.trim().isEmpty()) {
+                String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
+                fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
+            } else {
+                fullCmd = spoolCmd;
+            }
+            System.out.println("Using default Windows Verb Print.");
         }
         
         System.out.println("Executing Windows PowerShell spools...");
@@ -753,6 +771,40 @@ public class PrintAgent {
         int exitCode = p.waitFor();
         if (exitCode != 0) {
             throw new Exception("PowerShell execution failed (Exit Code: " + exitCode + "). Output: " + errorMsg.toString());
+        }
+    }
+
+    private static void ensurePrinterUtility() {
+        String homeDir = System.getProperty("user.home");
+        File util = new File(homeDir + File.separator + "PDFtoPrinter.exe");
+        if (util.exists() && util.length() > 1000000) {
+            return;
+        }
+        System.out.println("Downloading PDF printing helper utility...");
+        String urlString = "https://github.com/emendelson/pdftoprinter/raw/main/PDFtoPrinter.exe";
+        try {
+            URL url = new URL(urlString);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setInstanceFollowRedirects(true);
+            int status = conn.getResponseCode();
+            
+            // Handle HTTP redirects
+            if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 307 || status == 308) {
+                String newUrl = conn.getHeaderField("Location");
+                conn = (HttpURLConnection) new URL(newUrl).openConnection();
+            }
+            
+            try (InputStream in = conn.getInputStream();
+                 FileOutputStream out = new FileOutputStream(util)) {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            }
+            System.out.println("Helper utility downloaded successfully to: " + util.getAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("Failed to download PDF helper utility: " + e.getMessage());
         }
     }
 

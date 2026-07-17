@@ -24,12 +24,15 @@ public class PrintAgent {
     private static String lastPingTime = "";
     private static boolean hasLoggedPrinters = false;
 
+    private static CustomPrintStream customOutStream;
+
     public static void main(String[] args) {
         try {
             String logPath = System.getProperty("user.home") + File.separator + "print-agent.log";
-            PrintStream fileOut = new PrintStream(new FileOutputStream(logPath, true));
-            System.setOut(fileOut);
-            System.setErr(fileOut);
+            PrintStream fileOut = new PrintStream(new FileOutputStream(logPath, true), true, "UTF-8");
+            customOutStream = new CustomPrintStream(fileOut, null);
+            System.setOut(customOutStream);
+            System.setErr(customOutStream);
         } catch (Exception e) {}
 
         System.out.println("\n--- Print Agent Session Started: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + " ---");
@@ -44,7 +47,8 @@ public class PrintAgent {
         if (!configFile.exists()) {
             SwingUtilities.invokeLater(() -> showSetupWizard());
         } else {
-            // Config loaded, run silently in system tray
+            // Config loaded, show live dashboard and run silently in system tray
+            SwingUtilities.invokeLater(() -> showStatusDashboard());
             initSystemTray();
             startLocalServer();
             startPollingLoop();
@@ -247,6 +251,7 @@ public class PrintAgent {
 
             // Run Tray and background spool loop
             frame.dispose();
+            SwingUtilities.invokeLater(() -> showStatusDashboard());
             initSystemTray();
             startLocalServer();
             startPollingLoop();
@@ -393,12 +398,14 @@ public class PrintAgent {
                     }
 
                     trayIcon.setToolTip("Krishna Print Agent: Connected\nLast poll: " + lastPingTime);
+                    updateDashboardStatus(true, null);
                 } catch (Exception e) {
                     System.err.println("Network error in polling loop (Reconnecting in 10 seconds...): " + e.getMessage());
                     statusMessage = "Offline / Reconnecting...";
                     if (trayIcon != null) {
                         trayIcon.setToolTip("Krishna Print Agent: Reconnecting...\n" + e.getMessage());
                     }
+                    updateDashboardStatus(false, e.getMessage());
                     
                     // Reconnection recovery delay: Sleep for 10 seconds before next check
                     try {
@@ -892,5 +899,156 @@ public class PrintAgent {
             if (end == -1) return "";
             return block.substring(start, end).trim().replace("\"", "");
         }
+    }
+
+    private static JFrame dashboardFrame;
+    private static JLabel statusValLabel;
+    private static JLabel printerValLabel;
+    private static JTextArea logTextArea;
+
+    private static class CustomPrintStream extends PrintStream {
+        private final JTextArea textArea;
+        private JTextArea activeTextArea;
+
+        public CustomPrintStream(PrintStream fileStream, JTextArea textArea) {
+            super(fileStream, true);
+            this.textArea = textArea;
+            this.activeTextArea = textArea;
+        }
+
+        public void setTextArea(JTextArea newTextArea) {
+            this.activeTextArea = newTextArea;
+        }
+
+        @Override
+        public void write(byte[] buf, int off, int len) {
+            super.write(buf, off, len);
+            String message = new String(buf, off, len);
+            JTextArea target = this.activeTextArea;
+            if (target != null) {
+                SwingUtilities.invokeLater(() -> {
+                    target.append(message);
+                    if (target.getLineCount() > 300) {
+                        try {
+                            int end = target.getLineStartOffset(20);
+                            target.replaceRange("", 0, end);
+                        } catch (Exception ignored) {}
+                    }
+                    target.setCaretPosition(target.getDocument().getLength());
+                });
+            }
+        }
+    }
+
+    private static void showStatusDashboard() {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {}
+
+        if (dashboardFrame != null) {
+            dashboardFrame.setVisible(true);
+            dashboardFrame.toFront();
+            return;
+        }
+
+        dashboardFrame = new JFrame("Krishna Print Agent Dashboard");
+        dashboardFrame.setSize(520, 420);
+        dashboardFrame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
+        dashboardFrame.setLocationRelativeTo(null);
+        dashboardFrame.setResizable(false);
+
+        JPanel panel = new JPanel();
+        panel.setLayout(null);
+        panel.setBackground(new Color(248, 250, 252));
+        dashboardFrame.add(panel);
+
+        JLabel titleLabel = new JLabel("Krishna Print Agent - Live Dashboard");
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        titleLabel.setForeground(new Color(124, 58, 237));
+        titleLabel.setBounds(20, 15, 480, 25);
+        panel.add(titleLabel);
+
+        // Status
+        JLabel statusLabel = new JLabel("Connection Status:");
+        statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        statusLabel.setBounds(20, 55, 150, 20);
+        panel.add(statusLabel);
+
+        statusValLabel = new JLabel("CONNECTING...");
+        statusValLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        statusValLabel.setForeground(Color.ORANGE);
+        statusValLabel.setBounds(180, 55, 300, 20);
+        panel.add(statusValLabel);
+
+        // Default Printer
+        JLabel printerLabel = new JLabel("Assigned Printer:");
+        printerLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        printerLabel.setBounds(20, 85, 150, 20);
+        panel.add(printerLabel);
+
+        printerValLabel = new JLabel(DEFAULT_PRINTER.isEmpty() ? "None Selected" : DEFAULT_PRINTER);
+        printerValLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        printerValLabel.setBounds(180, 85, 300, 20);
+        panel.add(printerValLabel);
+
+        // Logs panel
+        JLabel logLabel = new JLabel("Live Operations Log:");
+        logLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        logLabel.setBounds(20, 120, 480, 20);
+        panel.add(logLabel);
+
+        logTextArea = new JTextArea();
+        logTextArea.setEditable(false);
+        logTextArea.setFont(new Font("Consolas", Font.PLAIN, 11));
+        logTextArea.setBackground(new Color(15, 23, 42));
+        logTextArea.setForeground(new Color(244, 244, 245));
+        
+        JScrollPane scrollPane = new JScrollPane(logTextArea);
+        scrollPane.setBounds(20, 145, 465, 180);
+        panel.add(scrollPane);
+
+        // Reconfigure Button
+        JButton configBtn = new JButton("Open Settings");
+        configBtn.setBounds(20, 340, 140, 30);
+        configBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        panel.add(configBtn);
+        configBtn.addActionListener(e -> showSetupWizard());
+
+        // Exit Button
+        JButton exitBtn = new JButton("Shutdown Agent");
+        exitBtn.setBounds(345, 340, 140, 30);
+        exitBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        panel.add(exitBtn);
+        exitBtn.addActionListener(e -> System.exit(0));
+
+        // Minimize to Tray info label
+        JLabel infoLabel = new JLabel("Note: Closing this window keeps the agent running in your taskbar system tray.");
+        infoLabel.setFont(new Font("Segoe UI", Font.ITALIC, 10));
+        infoLabel.setForeground(Color.GRAY);
+        infoLabel.setBounds(20, 375, 480, 15);
+        panel.add(infoLabel);
+
+        if (customOutStream != null) {
+            customOutStream.setTextArea(logTextArea);
+        }
+
+        dashboardFrame.setVisible(true);
+    }
+
+    private static void updateDashboardStatus(boolean online, String error) {
+        SwingUtilities.invokeLater(() -> {
+            if (statusValLabel != null) {
+                if (online) {
+                    statusValLabel.setText("🟢 ONLINE / IDLE");
+                    statusValLabel.setForeground(new Color(22, 163, 74));
+                } else {
+                    statusValLabel.setText("🔴 OFFLINE: " + (error != null ? error : "Reconnecting..."));
+                    statusValLabel.setForeground(Color.RED);
+                }
+            }
+            if (printerValLabel != null) {
+                printerValLabel.setText(DEFAULT_PRINTER.isEmpty() ? "None Selected" : DEFAULT_PRINTER);
+            }
+        });
     }
 }

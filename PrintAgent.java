@@ -561,6 +561,7 @@ public class PrintAgent {
         String fileUrl = order.get("fileUrl");
 
         System.out.println("Processing Print Job #" + orderId + " (" + file + ")");
+        System.out.println("DEBUG: fileUrl parsed as: '" + fileUrl + "'");
         
         String targetPrinter = determineTargetPrinter(paperSize, colorMode, assignedPrinterId);
         System.out.println("Routing Job #" + orderId + " to targeted printer: " + targetPrinter);
@@ -859,6 +860,7 @@ public class PrintAgent {
                 map.put("duplex", extractJsonVal(block, "duplex"));
                 map.put("assignedPrinterId", extractJsonVal(block, "assignedPrinterId"));
                 map.put("fileUrl", extractJsonVal(block, "fileUrl"));
+                System.out.println("Parsed Order from JSON - ID: " + map.get("id") + ", status: " + map.get("status") + ", fileUrl: '" + map.get("fileUrl") + "'");
                 list.add(map);
             }
         } catch (Exception ignored) {}

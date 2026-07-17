@@ -313,6 +313,26 @@ export default function LandingPage() {
     setUploading(true);
 
     try {
+      let fileUrl = '';
+      if (selectedFile) {
+        toast.loading("Uploading document...", { id: "upload-file" });
+        const uploadData = new FormData();
+        uploadData.append('file', selectedFile);
+        
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: uploadData
+        });
+        const uploadJson = await uploadRes.json();
+        if (!uploadJson.success) {
+          toast.error(uploadJson.error || "Failed to upload file to server.", { id: "upload-file" });
+          setUploading(false);
+          return;
+        }
+        fileUrl = uploadJson.fileUrl;
+        toast.success("Document uploaded successfully!", { id: "upload-file" });
+      }
+
       const response = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -321,6 +341,7 @@ export default function LandingPage() {
           customerPhone,
           fileName: selectedFile ? selectedFile.name : 'document.pdf',
           fileSize: selectedFile ? parseFloat((selectedFile.size / (1024 * 1024)).toFixed(2)) : 1.2,
+          fileUrl: fileUrl,
           pages: pagesCount,
           copies: copies,
           paperSize: paperSize,

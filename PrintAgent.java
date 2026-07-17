@@ -633,14 +633,33 @@ public class PrintAgent {
 
     private static void downloadFile(String fileUrl, File destination) throws Exception {
         String fullUrl = fileUrl.startsWith("http") ? fileUrl : BASE_URL + fileUrl;
-        URL url = new URL(fullUrl);
-        HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        con.setRequestMethod("GET");
-        con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
-        con.setConnectTimeout(10000);
-        con.setReadTimeout(15000);
+        
+        HttpURLConnection con = null;
+        int status = -1;
+        String targetUrl = fullUrl;
+        
+        // Loop up to 5 times for HTTP redirects (e.g. S3 / tmpfiles.org buckets)
+        for (int i = 0; i < 5; i++) {
+            URL url = new URL(targetUrl);
+            con = (HttpURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+            con.setConnectTimeout(10000);
+            con.setReadTimeout(15000);
+            
+            // Only add connection authentication header if it's pointing to our own backend
+            if (!targetUrl.startsWith("http") || targetUrl.startsWith(BASE_URL)) {
+                con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+            }
+            
+            status = con.getResponseCode();
+            if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 307 || status == 308) {
+                targetUrl = con.getHeaderField("Location");
+                con.disconnect();
+            } else {
+                break;
+            }
+        }
 
-        int status = con.getResponseCode();
         if (status != 200) {
             throw new IOException("Server returned HTTP status " + status);
         }
@@ -726,62 +745,71 @@ public class PrintAgent {
     }
 
     private static void printToWindowsDevice(File ticketFile, String printerName) throws Exception {
-        // Ensure the helper utility is downloaded
         ensurePrinterUtility();
 
-        File helperExe = new File(System.getProperty("user.home") + File.separator + "PDFtoPrinter.exe");
-        String fullCmd;
+        File helperExe = new File(System.getProperty("user.home") + File.separator + "SumatraPDF.exe");
         
         if (ticketFile.getName().toLowerCase().endsWith(".pdf") && helperExe.exists()) {
+            System.out.println("Using SumatraPDF utility for printing actual PDF document pages...");
+            List<String> cmd = new ArrayList<>();
+            cmd.add(helperExe.getAbsolutePath());
             if (printerName != null && !printerName.trim().isEmpty()) {
-                fullCmd = "& \"" + helperExe.getAbsolutePath() + "\" \"" + ticketFile.getAbsolutePath() + "\" \"" + printerName + "\"";
+                cmd.add("-print-to");
+                cmd.add(printerName.trim());
             } else {
-                fullCmd = "& \"" + helperExe.getAbsolutePath() + "\" \"" + ticketFile.getAbsolutePath() + "\"";
+                cmd.add("-print-to-default");
             }
-            System.out.println("Using PDFtoPrinter utility for PDF document.");
+            cmd.add(ticketFile.getAbsolutePath());
+            
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("SumatraPDF: " + line);
+                    output.append(line).append("\n");
+                }
+            }
+            int exitCode = p.waitFor();
+            if (exitCode != 0) {
+                throw new Exception("SumatraPDF failed (Exit Code: " + exitCode + "). Output: " + output.toString());
+            }
         } else {
+            // Fallback to default print verb for text files (receipts)
+            System.out.println("Using default Windows Verb Print for receipt/text file.");
             String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
+            String fullCmd;
             if (printerName != null && !printerName.trim().isEmpty()) {
                 String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
                 fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
             } else {
                 fullCmd = spoolCmd;
             }
-            System.out.println("Using default Windows Verb Print.");
-        }
-        
-        System.out.println("Executing Windows PowerShell spools...");
-        
-        ProcessBuilder pb = new ProcessBuilder(
-            "powershell", 
-            "-Command", 
-            fullCmd
-        );
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        
-        StringBuilder errorMsg = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                System.out.println("PowerShell: " + line);
-                errorMsg.append(line).append("\n");
+            
+            ProcessBuilder pb = new ProcessBuilder("powershell", "-Command", fullCmd);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("PowerShell: " + line);
+                }
             }
-        }
-        int exitCode = p.waitFor();
-        if (exitCode != 0) {
-            throw new Exception("PowerShell execution failed (Exit Code: " + exitCode + "). Output: " + errorMsg.toString());
+            p.waitFor();
         }
     }
 
     private static void ensurePrinterUtility() {
         String homeDir = System.getProperty("user.home");
-        File util = new File(homeDir + File.separator + "PDFtoPrinter.exe");
-        if (util.exists() && util.length() > 1000000) {
+        File util = new File(homeDir + File.separator + "SumatraPDF.exe");
+        if (util.exists() && util.length() > 2000000) {
             return;
         }
-        System.out.println("Downloading PDF printing helper utility...");
-        String urlString = "https://github.com/emendelson/pdftoprinter/raw/main/PDFtoPrinter.exe";
+        System.out.println("Downloading SumatraPDF printing helper utility...");
+        String urlString = "https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe";
         try {
             URL url = new URL(urlString);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -802,9 +830,9 @@ public class PrintAgent {
                     out.write(buffer, 0, bytesRead);
                 }
             }
-            System.out.println("Helper utility downloaded successfully to: " + util.getAbsolutePath());
+            System.out.println("SumatraPDF downloaded successfully to: " + util.getAbsolutePath());
         } catch (Exception e) {
-            System.err.println("Failed to download PDF helper utility: " + e.getMessage());
+            System.err.println("Failed to download SumatraPDF utility: " + e.getMessage());
         }
     }
 

@@ -221,19 +221,19 @@ function downloadDoc(fileUrl, destPath, callback) {
   });
 }
 
-const helperPath = path.join(process.env.USERPROFILE || process.env.HOMEPATH || process.env.HOME || 'C:\\', 'PDFtoPrinter.exe');
+const helperPath = path.join(process.env.USERPROFILE || process.env.HOMEPATH || process.env.HOME || 'C:\\', 'SumatraPDF.exe');
 
 function ensurePrinterUtility(callback) {
   if (fs.existsSync(helperPath)) {
     try {
       const stats = fs.statSync(helperPath);
-      if (stats.size > 1000000) {
+      if (stats.size > 2000000) {
         return callback(null);
       }
     } catch (e) {}
   }
   
-  console.log("📥 [Spooler] Downloading PDF printing helper utility...");
+  console.log("📥 [Spooler] Downloading SumatraPDF printing helper utility...");
   const file = fs.createWriteStream(helperPath);
   
   const download = (url) => {
@@ -248,7 +248,7 @@ function ensurePrinterUtility(callback) {
       res.pipe(file);
       file.on('finish', () => {
         file.close();
-        console.log(`🟢 [Spooler] Helper utility downloaded to: ${helperPath}`);
+        console.log(`🟢 [Spooler] SumatraPDF downloaded to: ${helperPath}`);
         callback(null);
       });
     }).on('error', (err) => {
@@ -257,7 +257,7 @@ function ensurePrinterUtility(callback) {
     });
   };
   
-  download("https://github.com/emendelson/pdftoprinter/raw/main/PDFtoPrinter.exe");
+  download("https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe");
 }
 
 function spoolToWindows(filePath, callback) {
@@ -265,36 +265,54 @@ function spoolToWindows(filePath, callback) {
     const isPdf = filePath.toLowerCase().endsWith('.pdf');
     const helperExists = fs.existsSync(helperPath);
 
-    let printCmd;
     if (isPdf && helperExists) {
+      let printArgs = [];
       if (targetPrinterName) {
-        console.log(`🎯 [Spooler] Targeting printer device using PDFtoPrinter: ${targetPrinterName}`);
-        printCmd = `powershell -Command "& '${helperPath}' '${filePath}' '${targetPrinterName}'"`;
+        console.log(`🎯 [Spooler] Targeting printer device using SumatraPDF: ${targetPrinterName}`);
+        printArgs = ['-print-to', targetPrinterName, filePath];
       } else {
-        console.log(`🎯 [Spooler] Targeting system default printer using PDFtoPrinter...`);
-        printCmd = `powershell -Command "& '${helperPath}' '${filePath}'"`;
+        console.log(`🎯 [Spooler] Targeting system default printer using SumatraPDF...`);
+        printArgs = ['-print-to-default', filePath];
       }
+      
+      console.log(`⚡ [Spooler] Executing SumatraPDF printer command...`);
+      const spawn = require('child_process').spawn;
+      const child = spawn(helperPath, printArgs);
+      
+      let outData = '';
+      child.stdout.on('data', (data) => outData += data);
+      child.stderr.on('data', (data) => outData += data);
+      
+      child.on('close', (code) => {
+        if (code !== 0) {
+          console.error(`❌ [Spooler] SumatraPDF failed with code ${code}. Output: ${outData}`);
+          callback(new Error(`SumatraPDF failed with code ${code}`));
+        } else {
+          console.log(`🟢 [Spooler] Physical spool successfully queued via SumatraPDF!`);
+          callback(null);
+        }
+      });
     } else {
-      console.log(`🎯 [Spooler] PDFtoPrinter fallback or non-PDF file. Using Verb Print.`);
-      printCmd = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+      console.log(`🎯 [Spooler] SumatraPDF fallback or non-PDF file. Using Verb Print.`);
+      let printCmd = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
       if (targetPrinterName) {
         console.log(`🎯 [Spooler] Targeting printer device: ${targetPrinterName}`);
         printCmd = `powershell -Command "Set-DefaultPrinter -Name '${targetPrinterName}'; Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
       } else {
         console.log(`🎯 [Spooler] Targeting system default printer...`);
       }
-    }
 
-    console.log(`⚡ [Spooler] Executing Windows printer command...`);
-    
-    exec(printCmd, (printErr) => {
-      if (printErr) {
-        console.error(`❌ [Spooler] Windows Print Spooler returned error:`, printErr.message);
-      } else {
-        console.log(`🟢 [Spooler] Physical spool successfully queued!`);
-      }
-      callback(printErr);
-    });
+      console.log(`⚡ [Spooler] Executing Windows printer command...`);
+      
+      exec(printCmd, (printErr) => {
+        if (printErr) {
+          console.error(`❌ [Spooler] Windows Print Spooler returned error:`, printErr.message);
+        } else {
+          console.log(`🟢 [Spooler] Physical spool successfully queued!`);
+        }
+        callback(printErr);
+      });
+    }
   });
 }
 

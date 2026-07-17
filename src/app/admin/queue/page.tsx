@@ -98,37 +98,7 @@ export default function AdminQueuePage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Simulate automated printing progression
-  useEffect(() => {
-    if (isPaused || !printingJob) return;
-
-    const interval = setInterval(() => {
-      setProgressVal(p => {
-        if (p >= 100) {
-          toast.success(`Print Complete: Order ${printingJob.id}`);
-          const updatedJob = { ...printingJob, status: 'completed' as const };
-          const nextCompleted = [updatedJob, ...completedJobs];
-          setCompletedJobs(nextCompleted);
-          
-          let nextPrinting = null;
-          let nextQueued = queuedJobs;
-          if (queuedJobs.length > 0) {
-            nextPrinting = { ...queuedJobs[0], status: 'printing' as const };
-            nextQueued = queuedJobs.slice(1);
-            setPrintingJob(nextPrinting);
-            setQueuedJobs(nextQueued);
-          } else {
-            setPrintingJob(null);
-          }
-          syncQueueToDb(nextPrinting, nextQueued, nextCompleted);
-          return 0;
-        }
-        return p + 10;
-      });
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [isPaused, printingJob, queuedJobs, completedJobs]);
+  // Automated printing progression simulation disabled to prevent fake status overrides
 
   const handlePauseToggle = () => {
     setIsPaused(!isPaused);

@@ -629,7 +629,7 @@ public class PrintAgent {
     }
 
     private static void downloadFile(String fileUrl, File destination) throws Exception {
-        String fullUrl = BASE_URL + fileUrl;
+        String fullUrl = fileUrl.startsWith("http") ? fileUrl : BASE_URL + fileUrl;
         URL url = new URL(fullUrl);
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");

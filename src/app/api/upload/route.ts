@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,24 +10,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    // Forward the file to tmpfiles.org public upload API
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', file);
 
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+      method: 'POST',
+      body: uploadFormData
+    });
+
+    if (!res.ok) {
+      throw new Error(`tmpfiles.org returned HTTP ${res.status}`);
     }
 
-    // Clean name to prevent path injection
-    const safeName = Date.now() + "_" + file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
-    const filePath = path.join(uploadsDir, safeName);
-    fs.writeFileSync(filePath, buffer);
+    const data = await res.json();
+    if (data.status !== 'success' || !data.data || !data.data.url) {
+      throw new Error(data.message || "Failed to upload file to tmpfiles.org");
+    }
+
+    // Convert view URL to direct download URL
+    // e.g. https://tmpfiles.org/12345/file.pdf -> https://tmpfiles.org/dl/12345/file.pdf
+    const viewUrl = data.data.url;
+    const downloadUrl = viewUrl.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/');
 
     return NextResponse.json({ 
       success: true, 
-      fileUrl: `/uploads/${safeName}` 
+      fileUrl: downloadUrl 
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("Cloud upload error:", err);
+    return NextResponse.json({ error: err.message || "Cloud upload failed" }, { status: 500 });
   }
 }

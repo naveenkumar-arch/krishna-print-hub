@@ -136,10 +136,39 @@ function processSpoolJob(job) {
 
     console.log(`🖨️ [Spooler] Spooling document: ${job.fileName}`);
     console.log(`🔍 [Phase 9 Smart Diagnostics] Check A4 cassettes: OK. Ink levels: OK.`);
+
+    const hasFile = job.fileUrl && job.fileUrl.trim().length > 0;
     
-    // Create a local print spool ticket text file
-    const spoolFile = path.join(__dirname, `spool_job_${job.id}.txt`);
-    const receiptContent = `
+    if (hasFile) {
+      // Download actual customer document
+      const fileExt = path.extname(job.fileName) || '.pdf';
+      const spoolFile = path.join(__dirname, `spool_job_${job.id}${fileExt}`);
+      
+      console.log(`📥 [Spooler] Downloading file from: ${job.fileUrl}`);
+      
+      downloadDoc(job.fileUrl, spoolFile, (downloadErr) => {
+        if (downloadErr) {
+          console.error(`❌ [Spooler] Failed to download document:`, downloadErr.message);
+          updateJobStatusOnServer(job.id, 'error', () => {});
+          return;
+        }
+        
+        spoolToWindows(spoolFile, (printErr) => {
+          // Keep printing status for 20 seconds, then mark completed
+          setTimeout(() => {
+            updateJobStatusOnServer(job.id, 'completed', () => {
+              console.log(`✅ [Spooler] Order ${job.id} printed & finalized.`);
+              try {
+                fs.unlinkSync(spoolFile);
+              } catch(e) {}
+            });
+          }, 20000);
+        });
+      });
+    } else {
+      // Create a local print spool ticket text file (fallback)
+      const spoolFile = path.join(__dirname, `spool_job_${job.id}.txt`);
+      const receiptContent = `
 ==================================================
         KRISHNA STUDENTS PRINT HUB - RECEIPT      
 ==================================================
@@ -155,37 +184,62 @@ Pickup Code:  ${job.pickupCode}
 Status:       PAID SECURELY VIA RAZORPAY
 ==================================================
 `;
-
-    fs.writeFileSync(spoolFile, receiptContent, 'utf-8');
-
-    // PowerShell printing: print target file directly to Windows printer
-    let printCmd = `powershell -Command "Start-Process -FilePath '${spoolFile}' -Verb Print -PassThru"`;
-    if (targetPrinterName) {
-      console.log(`🎯 [Spooler] Targeting printer device: ${targetPrinterName}`);
-      printCmd = `powershell -Command "Set-DefaultPrinter -Name '${targetPrinterName}'; Start-Process -FilePath '${spoolFile}' -Verb Print -PassThru"`;
-    } else {
-      console.log(`🎯 [Spooler] Targeting system default printer...`);
+      fs.writeFileSync(spoolFile, receiptContent, 'utf-8');
+      
+      spoolToWindows(spoolFile, (printErr) => {
+        setTimeout(() => {
+          updateJobStatusOnServer(job.id, 'completed', () => {
+            console.log(`✅ [Spooler] Order ${job.id} printed & finalized (fallback ticket).`);
+            try {
+              fs.unlinkSync(spoolFile);
+            } catch(e) {}
+          });
+        }, 20000);
+      });
     }
+  });
+}
 
-    console.log(`⚡ [Spooler] Executing Windows printer command...`);
+function downloadDoc(fileUrl, destPath, callback) {
+  let fullUrl = fileUrl.startsWith('http') ? fileUrl : `https://${BACKEND_HOST}${fileUrl}`;
+  const client = fullUrl.startsWith('https') ? https : http;
+  
+  client.get(fullUrl, (res) => {
+    if (res.statusCode !== 200) {
+      return callback(new Error(`Server returned status code ${res.statusCode}`));
+    }
     
-    exec(printCmd, (printErr) => {
-      if (printErr) {
-        console.error(`❌ [Spooler] Windows Print Spooler returned error:`, printErr.message);
-      } else {
-        console.log(`🟢 [Spooler] Physical spool successfully queued to Xerox/office printer!`);
-      }
-
-      // Keep printing status for 20 seconds, then mark completed
-      setTimeout(() => {
-        updateJobStatusOnServer(job.id, 'completed', () => {
-          console.log(`✅ [Spooler] Order ${job.id} printed & finalized.`);
-          try {
-            fs.unlinkSync(spoolFile);
-          } catch(e) {}
-        });
-      }, 20000);
+    const fileStream = fs.createWriteStream(destPath);
+    res.pipe(fileStream);
+    
+    fileStream.on('finish', () => {
+      fileStream.close();
+      callback(null);
     });
+  }).on('error', (err) => {
+    callback(err);
+  });
+}
+
+function spoolToWindows(filePath, callback) {
+  // PowerShell printing: print target file directly to Windows printer
+  let printCmd = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+  if (targetPrinterName) {
+    console.log(`🎯 [Spooler] Targeting printer device: ${targetPrinterName}`);
+    printCmd = `powershell -Command "Set-DefaultPrinter -Name '${targetPrinterName}'; Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+  } else {
+    console.log(`🎯 [Spooler] Targeting system default printer...`);
+  }
+
+  console.log(`⚡ [Spooler] Executing Windows printer command...`);
+  
+  exec(printCmd, (printErr) => {
+    if (printErr) {
+      console.error(`❌ [Spooler] Windows Print Spooler returned error:`, printErr.message);
+    } else {
+      console.log(`🟢 [Spooler] Physical spool successfully queued to Xerox/office printer!`);
+    }
+    callback(printErr);
   });
 }
 

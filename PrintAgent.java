@@ -426,10 +426,11 @@ public class PrintAgent {
             String name = parts[0];
             String rawStatus = parts.length > 1 ? parts[1] : "3";
             String rawToner = parts.length > 2 ? parts[2] : "100";
+            String workOffline = parts.length > 3 ? parts[3] : "False";
 
-            String status = "offline";
-            if ("3".equals(rawStatus) || "7".equals(rawStatus)) {
-                status = "idle";
+            String status = "idle";
+            if ("True".equalsIgnoreCase(workOffline.trim())) {
+                status = "offline";
             } else if ("4".equals(rawStatus)) {
                 status = "printing";
             }
@@ -742,7 +743,7 @@ public class PrintAgent {
     private static List<String> getWindowsPrinters() {
         List<String> list = new ArrayList<>();
         try {
-            String command = "Get-CimInstance -ClassName Win32_Printer | ForEach-Object { $_.Name + '|' + $_.PrinterStatus + '|' + $_.EstimatedChargeRemaining }";
+            String command = "Get-CimInstance -ClassName Win32_Printer | ForEach-Object { $_.Name + '|' + $_.PrinterStatus + '|' + $_.EstimatedChargeRemaining + '|' + $_.WorkOffline }";
             ProcessBuilder pb = new ProcessBuilder("powershell", "-Command", command);
             Process p = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {

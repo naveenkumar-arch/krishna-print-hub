@@ -18,15 +18,52 @@ export default function AdminAnalyticsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('printOrders');
-    if (saved) {
-      try {
-        setOrders(JSON.parse(saved));
-      } catch (e) {
-        setOrders([]);
-      }
-    }
+    fetch('/api/orders')
+      .then(res => res.json())
+      .then(data => {
+        if (data.orders) {
+          setOrders(data.orders);
+        }
+      })
+      .catch(() => {
+        const saved = localStorage.getItem('printOrders');
+        if (saved) {
+          try {
+            setOrders(JSON.parse(saved));
+          } catch (e) {
+            setOrders([]);
+          }
+        }
+      });
   }, []);
+
+  // Compute weekly/daily stats dynamically for the last 7 days
+  const getWeeklyStats = () => {
+    const dailyMap: Record<string, number> = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dailyMap[dateStr] = 0;
+    }
+
+    const paidOrders = orders.filter(o => o.status !== 'failed' && o.status !== 'cancelled' && o.status !== 'pending');
+    paidOrders.forEach(o => {
+      if (o.createdAt) {
+        const dateStr = new Date(o.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (dailyMap[dateStr] !== undefined) {
+          dailyMap[dateStr] += 1;
+        }
+      }
+    });
+
+    return Object.entries(dailyMap).map(([date, ordersCount]) => ({
+      date,
+      orders: ordersCount
+    }));
+  };
+
+  const weeklyStats = getWeeklyStats();
 
   // Compute live metrics from actual orders database
   const paidOrders = orders.filter(o => o.status !== 'failed' && o.status !== 'cancelled' && o.status !== 'pending');
@@ -122,7 +159,7 @@ export default function AdminAnalyticsPage() {
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mockAnalytics.weeklyStats}>
+                <BarChart data={weeklyStats}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 10, fill: '#64748b' }} />

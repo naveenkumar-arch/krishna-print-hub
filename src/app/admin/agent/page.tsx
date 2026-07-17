@@ -35,6 +35,18 @@ export default function PrintAgentMonitorPage() {
     }
   }, []);
 
+  const getAssignedRole = (p: any) => {
+    const roles: string[] = [];
+    if (p.supportsColor) roles.push("Color Printing 🎨");
+    if (p.supportsA3) roles.push("A3 Printing 📄");
+    if (p.isDefault) roles.push("Default B&W Printing ⚫");
+    
+    if (roles.length === 0) {
+      return "Black & White Printing ⚫";
+    }
+    return roles.join(" & ");
+  };
+
   const fetchStatus = () => {
     setLoading(true);
     fetch('/api/config')
@@ -410,6 +422,7 @@ export default function PrintAgentMonitorPage() {
             <thead>
               <tr>
                 <th>Hardware Device Name</th>
+                <th>Assigned Purpose</th>
                 <th>Toner / Ink Level</th>
                 <th>WMI Driver Status</th>
                 <th>Diagnostics</th>
@@ -418,7 +431,7 @@ export default function PrintAgentMonitorPage() {
             <tbody>
               {localPrinters.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-slate-400 text-xs">
+                  <td colSpan={5} className="text-center py-8 text-slate-400 text-xs">
                     No active Windows spool devices detected. Ensure the desktop agent is running.
                   </td>
                 </tr>
@@ -429,6 +442,9 @@ export default function PrintAgentMonitorPage() {
                   return (
                     <tr key={idx} className="hover:bg-slate-50/50">
                       <td className="font-bold text-slate-800">{p.Name || p.name}</td>
+                      <td className="font-semibold text-xs text-brand-700">
+                        {getAssignedRole(p)}
+                      </td>
                       <td>
                         <div className="flex items-center gap-2 max-w-[150px]">
                           <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">

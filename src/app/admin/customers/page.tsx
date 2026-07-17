@@ -13,6 +13,24 @@ export default function AdminCustomersPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   // Customer Editor States
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
   const [editName, setEditName] = useState('');
@@ -176,7 +194,7 @@ export default function AdminCustomersPage() {
                         </div>
                         <div>
                           <div className="font-semibold text-slate-800">{c.name || 'Anonymous User'}</div>
-                          <div className="text-[10px] text-slate-400">Created {new Date(c.createdAt).toLocaleDateString()}</div>
+                          <div className="text-[9px] text-slate-400">Created {formatDateTime(c.createdAt)}</div>
                         </div>
                       </div>
                     </td>
@@ -200,9 +218,9 @@ export default function AdminCustomersPage() {
                     </td>
                     <td className="font-extrabold text-slate-800">₹{c.totalSpent}</td>
                     <td className="text-slate-500 font-medium">
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 text-[10px]">
                         <Calendar size={12} className="text-slate-400" />
-                        {new Date(c.lastOrderAt).toLocaleDateString()}
+                        {formatDateTime(c.lastOrderAt)}
                       </span>
                     </td>
                     <td className="text-slate-600 font-semibold text-[10px]">{c.lastPaymentMethod}</td>

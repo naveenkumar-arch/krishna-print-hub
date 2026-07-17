@@ -261,16 +261,16 @@ client.on('message', async msg => {
             // Calculate pricing dynamically
             const pricing = getPricingRates();
             const rate = state.type === 'color' ? (pricing.A4_Color || 10.00) : (pricing.A4_BW || 2.00);
-            const total = rate * state.pages * copies;
+            const total = Math.round(rate * state.pages * copies);
             
             state.step = 'choose_payment';
-            await msg.reply(`🧾 *Print Summary:*\n📄 Pages: ${state.pages}\n👥 Copies: ${copies}\n🎨 Mode: ${state.type === 'color' ? 'Color' : 'B&W'}\n💰 *Total Amount: ₹${total.toFixed(2)}*\n\n*Choose Payment Method:*\n1️⃣ Pay Online (GPay/UPI/Card)\n2️⃣ Pay Cash at Counter`);
+            await msg.reply(`🧾 *Print Summary:*\n📄 Pages: ${state.pages}\n👥 Copies: ${copies}\n🎨 Mode: ${state.type === 'color' ? 'Color' : 'B&W'}\n💰 *Total Amount: ₹${total.toFixed(0)}*\n\n*Choose Payment Method:*\n1️⃣ Pay Online (GPay/UPI/Card)\n2️⃣ Pay Cash at Counter`);
         }
     }
     else if (state.step === 'choose_payment') {
         const pricing = getPricingRates();
         const rate = state.type === 'color' ? (pricing.A4_Color || 10.00) : (pricing.A4_BW || 2.00);
-        const total = rate * state.pages * state.copies;
+        const total = Math.round(rate * state.pages * state.copies);
 
         if (body === '1') {
             state.step = 'paying';

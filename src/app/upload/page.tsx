@@ -135,16 +135,16 @@ export default function UploadPage() {
       perPagePrice = pricing.Legal_BW;
     }
 
-    return perPagePrice * pagesCount * copies;
+    return Math.round(perPagePrice * pagesCount * copies);
   };
 
   const calculatePrice = () => {
     const raw = getRawPrice();
     if (appliedCoupon) {
       const discount = raw * (appliedCoupon.discountPercent / 100);
-      return Number((raw - discount).toFixed(2));
+      return Math.round(raw - discount);
     }
-    return Number(raw.toFixed(2));
+    return Math.round(raw);
   };
 
   const handleApplyCoupon = () => {

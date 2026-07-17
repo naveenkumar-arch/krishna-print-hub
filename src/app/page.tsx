@@ -115,13 +115,13 @@ export default function LandingPage() {
       } else {
         setSimulatedCopies(num);
         const pricePerPage = simulatedPrintType === 'color' ? pricing.A4_Color : pricing.A4_BW;
-        const total = pricePerPage * simulatedPages * num;
+        const total = Math.round(pricePerPage * simulatedPages * num);
         setSimulatedAmount(total);
         setChatStep('paying');
 
-        appendBotMessage(`Calculating cost...\nPages: ${simulatedPages}\nCopies: ${num}\nTotal Amount: ₹${total.toFixed(2)}\n\nHere is your secure Razorpay checkout link:`);
+        appendBotMessage(`Calculating cost...\nPages: ${simulatedPages}\nCopies: ${num}\nTotal Amount: ₹${total.toFixed(0)}\n\nHere is your secure Razorpay checkout link:`);
         setTimeout(() => {
-          setChatMessages(prev => [...prev, { sender: 'bot', text: `🔗 Complete Payment of ₹${total.toFixed(2)}`, isLink: true }]);
+          setChatMessages(prev => [...prev, { sender: 'bot', text: `🔗 Complete Payment of ₹${total.toFixed(0)}`, isLink: true }]);
         }, 1000);
       }
     } else {
@@ -190,7 +190,7 @@ export default function LandingPage() {
         setShowWaPayModal(false);
         setChatStep('paid');
         toast.success("WhatsApp simulation payment succeeded!");
-        appendBotMessage(`✓ Payment of ₹${simulatedAmount.toFixed(2)} received successfully!\n\nOrder Code: ${code}\nStatus: Queued for printing.\n\nYour receipt has been sent.`);
+        appendBotMessage(`✓ Payment of ₹${simulatedAmount.toFixed(0)} received successfully!\n\nOrder Code: ${code}\nStatus: Queued for printing.\n\nYour receipt has been sent.`);
       }, 1500);
 
     } catch (err) {

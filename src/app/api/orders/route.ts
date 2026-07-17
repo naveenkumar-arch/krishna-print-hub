@@ -93,7 +93,7 @@ export async function POST(request: Request) {
       perPagePrice = mode === 'color' ? pricing.A4_Color : pricing.A4_BW;
     }
 
-    const calculatedAmount = perPagePrice * (pages || 1) * (copies || 1);
+    const calculatedAmount = Math.round(perPagePrice * (pages || 1) * (copies || 1));
     
     let finalAmount = calculatedAmount;
     if (couponCode) {
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       const found = coupons.find(c => c.code === couponCode.toUpperCase() && c.isActive);
       if (found) {
         const discount = calculatedAmount * (found.discountPercent / 100);
-        finalAmount = Number((calculatedAmount - discount).toFixed(2));
+        finalAmount = Math.round(calculatedAmount - discount);
       }
     }
 

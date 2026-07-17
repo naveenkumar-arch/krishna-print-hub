@@ -14,6 +14,24 @@ export default function AdminOrdersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  const formatOrderDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   // Modal Editing States
   const [editingOrder, setEditingOrder] = useState<any | null>(null);
   const [editPaperSize, setEditPaperSize] = useState<string>('A4');
@@ -239,6 +257,7 @@ export default function AdminOrdersPage() {
                       <td>
                         <div className="font-semibold text-slate-800">{o.customerName}</div>
                         <div className="text-[10px] text-slate-500 font-medium">{o.customerPhone}</div>
+                        <div className="text-[9px] text-slate-400 font-medium mt-0.5">{formatOrderDate(o.createdAt)}</div>
                       </td>
                       <td>
                         <div className="truncate max-w-[160px] font-medium text-slate-700">{o.fileName}</div>

@@ -10,11 +10,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Forward the file to uguu.se public upload API
+    // Forward the file to pixeldrain.com public upload API
     const uploadFormData = new FormData();
-    uploadFormData.append('files[]', file);
+    uploadFormData.append('file', file);
 
-    const res = await fetch('https://uguu.se/upload?output=text', {
+    const res = await fetch('https://pixeldrain.com/api/file', {
       method: 'POST',
       body: uploadFormData,
       headers: {
@@ -23,18 +23,19 @@ export async function POST(request: Request) {
     });
 
     if (!res.ok) {
-      throw new Error(`uguu.se returned HTTP ${res.status}`);
+      throw new Error(`pixeldrain.com returned HTTP ${res.status}`);
     }
 
-    const fileUrl = await res.text();
-    const trimmedUrl = fileUrl.trim();
-    if (!trimmedUrl.startsWith('https://uguu.se/')) {
-      throw new Error("Failed to upload file to Uguu: " + trimmedUrl);
+    const data = await res.json();
+    if (!data.success || !data.id) {
+      throw new Error(data.message || "Failed to upload file to Pixeldrain");
     }
+
+    const fileUrl = `https://pixeldrain.com/api/file/${data.id}`;
 
     return NextResponse.json({ 
       success: true, 
-      fileUrl: trimmedUrl 
+      fileUrl: fileUrl 
     });
   } catch (err: any) {
     console.error("Cloud upload error:", err);

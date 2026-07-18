@@ -772,8 +772,17 @@ public class PrintAgent {
 
         File helperExe = getPrinterUtilityFile();
         
-        if (ticketFile.getName().toLowerCase().endsWith(".pdf") && helperExe.exists()) {
-            System.out.println("Using SumatraPDF utility for printing actual PDF document pages...");
+        String fileNameLower = ticketFile.getName().toLowerCase();
+        boolean isPrintableWithSumatra = fileNameLower.endsWith(".pdf") || 
+                                         fileNameLower.endsWith(".png") || 
+                                         fileNameLower.endsWith(".jpg") || 
+                                         fileNameLower.endsWith(".jpeg") || 
+                                         fileNameLower.endsWith(".gif") || 
+                                         fileNameLower.endsWith(".webp") || 
+                                         fileNameLower.endsWith(".bmp");
+
+        if (isPrintableWithSumatra && helperExe.exists()) {
+            System.out.println("Using SumatraPDF utility for printing document/image silently...");
             List<String> cmd = new ArrayList<>();
             cmd.add(helperExe.getAbsolutePath());
             if (printerName != null && !printerName.trim().isEmpty()) {

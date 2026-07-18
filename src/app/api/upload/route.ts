@@ -10,7 +10,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Provider 1: Try Catbox.moe (Permanent, direct download link, no Vercel IP blocks)
+    // Provider 1: Try tmpfiles.org (Highly stable, no Vercel IP blocks, direct download link via /dl/ path)
+    try {
+      console.log("Uploading to tmpfiles.org...");
+      const tmpFormData = new FormData();
+      tmpFormData.append('file', file);
+
+      const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+        method: 'POST',
+        body: tmpFormData,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.status === 'success' && result.data && result.data.url) {
+          // Convert standard URL (https://tmpfiles.org/123456/filename)
+          // to direct download URL (https://tmpfiles.org/dl/123456/filename)
+          const directUrl = result.data.url.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/');
+          console.log("Successfully uploaded to tmpfiles.org:", directUrl);
+          return NextResponse.json({ 
+            success: true, 
+            fileUrl: directUrl 
+          });
+        }
+      }
+      console.warn(`tmpfiles.org upload failed with status: ${res.status}`);
+    } catch (err) {
+      console.warn("tmpfiles.org upload failed with error:", err);
+    }
+
+    // Provider 2: Try Catbox.moe (Permanent, direct download link, no Vercel IP blocks)
     try {
       console.log("Uploading to Catbox.moe...");
       const catboxFormData = new FormData();
@@ -41,7 +73,7 @@ export async function POST(request: Request) {
       console.warn("Catbox.moe upload failed with error:", err);
     }
 
-    // Provider 2: Try Uguu.se (Expiring 3 hours, direct download link, no Vercel IP blocks)
+    // Provider 3: Try Uguu.se (Expiring 3 hours, direct download link, no Vercel IP blocks)
     try {
       console.log("Uploading to Uguu.se...");
       const uguuFormData = new FormData();
@@ -71,7 +103,7 @@ export async function POST(request: Request) {
       console.warn("Uguu.se upload failed with error:", err);
     }
 
-    // Provider 3: Fallback to 0x0.st (Direct link, simple)
+    // Provider 4: Fallback to 0x0.st (Direct link, simple)
     try {
       console.log("Uploading to 0x0.st...");
       const uploadFormData = new FormData();

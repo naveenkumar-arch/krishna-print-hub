@@ -10,32 +10,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Forward the file to tmpfiles.org public upload API
+    // Forward the file to catbox.moe public upload API
     const uploadFormData = new FormData();
-    uploadFormData.append('file', file);
+    uploadFormData.append('reqtype', 'fileupload');
+    uploadFormData.append('fileToUpload', file);
 
-    const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+    const res = await fetch('https://catbox.moe/user/api.php', {
       method: 'POST',
       body: uploadFormData
     });
 
     if (!res.ok) {
-      throw new Error(`tmpfiles.org returned HTTP ${res.status}`);
+      throw new Error(`catbox.moe returned HTTP ${res.status}`);
     }
 
-    const data = await res.json();
-    if (data.status !== 'success' || !data.data || !data.data.url) {
-      throw new Error(data.message || "Failed to upload file to tmpfiles.org");
+    const fileUrl = await res.text();
+    const trimmedUrl = fileUrl.trim();
+    if (!trimmedUrl.startsWith('https://files.catbox.moe/')) {
+      throw new Error("Failed to upload file to catbox: " + trimmedUrl);
     }
-
-    // Convert view URL to direct download URL
-    // e.g. https://tmpfiles.org/12345/file.pdf -> https://tmpfiles.org/dl/12345/file.pdf
-    const viewUrl = data.data.url;
-    const downloadUrl = viewUrl.replace('https://tmpfiles.org/', 'https://tmpfiles.org/dl/');
 
     return NextResponse.json({ 
       success: true, 
-      fileUrl: downloadUrl 
+      fileUrl: trimmedUrl 
     });
   } catch (err: any) {
     console.error("Cloud upload error:", err);

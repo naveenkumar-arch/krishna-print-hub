@@ -809,17 +809,31 @@ public class PrintAgent {
             return;
         }
         System.out.println("Downloading SumatraPDF printing helper utility...");
-        String urlString = "https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe";
+        String targetUrl = "https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe";
+        
+        HttpURLConnection conn = null;
+        int status = -1;
+        
         try {
-            URL url = new URL(urlString);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setInstanceFollowRedirects(true);
-            int status = conn.getResponseCode();
-            
-            // Handle HTTP redirects
-            if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 307 || status == 308) {
-                String newUrl = conn.getHeaderField("Location");
-                conn = (HttpURLConnection) new URL(newUrl).openConnection();
+            // Loop up to 5 times for HTTP redirects (GitHub releases to AWS/GCS storage CDN)
+            for (int i = 0; i < 5; i++) {
+                URL url = new URL(targetUrl);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(20000);
+                
+                status = conn.getResponseCode();
+                if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 307 || status == 308) {
+                    targetUrl = conn.getHeaderField("Location");
+                    conn.disconnect();
+                } else {
+                    break;
+                }
+            }
+
+            if (status != 200) {
+                throw new IOException("Server returned HTTP status " + status);
             }
             
             try (InputStream in = conn.getInputStream();
@@ -832,7 +846,7 @@ public class PrintAgent {
             }
             System.out.println("SumatraPDF downloaded successfully to: " + util.getAbsolutePath());
         } catch (Exception e) {
-            System.err.println("Failed to download SumatraPDF utility: " + e.getMessage());
+            System.err.println("Failed to download SumatraPDF utility: " + e.getMessage() + " (HTTP Status: " + status + ")");
         }
     }
 

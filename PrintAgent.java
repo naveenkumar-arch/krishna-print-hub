@@ -839,45 +839,52 @@ public class PrintAgent {
         if (util.exists() && util.length() > 2000000) {
             return;
         }
-        System.out.println("Downloading SumatraPDF printing helper utility as fallback...");
-        String targetUrl = "https://raw.githubusercontent.com/naveenkumar-arch/krishna-print-hub/main/SumatraPDF.exe";
         
-        HttpURLConnection conn = null;
-        int status = -1;
-        
-        try {
-            // Loop up to 5 times for HTTP redirects (GitHub releases to AWS/GCS storage CDN)
-            for (int i = 0; i < 5; i++) {
+        System.out.println("Extracting SumatraPDF printing utility from JAR resources...");
+        try (InputStream in = PrintAgent.class.getResourceAsStream("/SumatraPDF.exe");
+             FileOutputStream out = new FileOutputStream(util)) {
+            
+            if (in == null) {
+                throw new Exception("SumatraPDF.exe resource not found in JAR");
+            }
+            
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+            System.out.println("SumatraPDF extracted successfully to: " + util.getAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("Failed to extract SumatraPDF resource: " + e.getMessage());
+            
+            // Fallback: Try downloading from raw GitHub URL
+            System.out.println("Downloading SumatraPDF printing helper utility as fallback...");
+            String targetUrl = "https://raw.githubusercontent.com/naveenkumar-arch/krishna-print-hub/main/SumatraPDF.exe";
+            HttpURLConnection conn = null;
+            int status = -1;
+            try {
                 URL url = new URL(targetUrl);
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(20000);
-                
                 status = conn.getResponseCode();
-                if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == 307 || status == 308) {
-                    targetUrl = conn.getHeaderField("Location");
-                    conn.disconnect();
+                if (status == 200) {
+                    try (InputStream downloadIn = conn.getInputStream();
+                         FileOutputStream downloadOut = new FileOutputStream(util)) {
+                        byte[] downloadBuffer = new byte[4096];
+                        int downloadBytesRead;
+                        while ((downloadBytesRead = downloadIn.read(downloadBuffer)) != -1) {
+                            downloadOut.write(downloadBuffer, 0, downloadBytesRead);
+                        }
+                    }
+                    System.out.println("SumatraPDF downloaded successfully to: " + util.getAbsolutePath());
                 } else {
-                    break;
+                    System.err.println("Failed to download fallback SumatraPDF. Status: " + status);
                 }
+            } catch (Exception err) {
+                System.err.println("Failed to download fallback SumatraPDF: " + err.getMessage());
             }
-
-            if (status != 200) {
-                throw new IOException("Server returned HTTP status " + status);
-            }
-            
-            try (InputStream in = conn.getInputStream();
-                 FileOutputStream out = new FileOutputStream(util)) {
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
-            }
-            System.out.println("SumatraPDF downloaded successfully to: " + util.getAbsolutePath());
-        } catch (Exception e) {
-            System.err.println("Failed to download SumatraPDF utility: " + e.getMessage() + " (HTTP Status: " + status + ")");
         }
     }
 

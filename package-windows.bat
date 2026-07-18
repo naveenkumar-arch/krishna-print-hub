@@ -5,6 +5,24 @@ echo   PACKAGING WINDOWS NATIVE STANDALONE INSTALLER
 echo ==================================================
 echo.
 
+:: 0. Ensure SumatraPDF printing helper exists locally to be packaged
+if exist SumatraPDF.exe (
+    for %%I in (SumatraPDF.exe) do (
+        if %%~zI LSS 2000000 (
+            echo Deleting corrupted or incomplete SumatraPDF.exe...
+            del SumatraPDF.exe
+        )
+    )
+)
+if not exist SumatraPDF.exe (
+    echo Downloading SumatraPDF utility zip to package inside installer...
+    curl -L -o SumatraPDF.zip "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2.zip"
+    echo Extracting SumatraPDF.exe...
+    tar -xf SumatraPDF.zip
+    ren SumatraPDF-3.5.2-32.exe SumatraPDF.exe
+    del SumatraPDF.zip
+)
+
 :: 1. Compile Java Source Code
 echo Compiling source files...
 javac PrintAgent.java

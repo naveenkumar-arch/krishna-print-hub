@@ -295,31 +295,29 @@ export default function PrintAgentMonitorPage() {
           </p>
         </div>
       </div>
+
       {/* Download Instructions Card */}
-      <div className="bg-brand-50/50 border border-brand-100 p-5 rounded-2xl text-xs space-y-2">
+      <div className="bg-brand-50/50 border border-brand-100 p-5 rounded-2xl text-xs space-y-2 mt-4">
         <h3 className="font-extrabold text-brand-900 text-sm">Print Agent Installation Guide</h3>
         <p className="text-brand-800 leading-relaxed">
-          Choose the right download option based on your computer setup:
+          Follow these quick steps to run the print agent software on your shop PC:
         </p>
         <ul className="list-disc pl-5 space-y-1.5 text-brand-700">
           <li>
-            <strong>If Java is already installed:</strong> Simply download and double-click the <strong>JAR file</strong> to run the software immediately.
+            <strong>Pre-requisite:</strong> Ensure Java (JDK 17 or higher) is installed on your Windows PC.
           </li>
           <li>
-            <strong>If Java is not installed:</strong> Download and install Java (JDK 17+) first, and then download and run the <strong>JAR file</strong>.
-          </li>
-          <li>
-            <strong>If the Windows Installer (.exe) is blocked:</strong> Windows Smart App Control may block the unsigned installer. Simply install Java (JDK 17+) on your PC, download the <strong>JAR file</strong>, and run it instead.
+            <strong>Running the Agent:</strong> Download the <strong>JAR file</strong> below, save it to a permanent folder, and double-click it (or run <code>java -jar KrishnaPrintAgent.jar</code> in command prompt) to start the system.
           </li>
         </ul>
       </div>
 
       {/* Action download panel and console logger */}
-      <div className="card-premium bg-slate-50 border border-slate-100 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="card-premium bg-slate-50 border border-slate-100 p-5 flex flex-col sm:flex-row items-center justify-between gap-4 my-4">
         <div>
-          <h3 className="font-extrabold text-slate-800 text-sm">Download Windows Standalone Installer</h3>
+          <h3 className="font-extrabold text-slate-800 text-sm">Download Print Agent Software</h3>
           <p className="text-slate-500 text-xs mt-0.5">
-            Use this package to link a new counter PC or reinstall the silently running Windows service.
+            Use the standalone runnable JAR archive to link your shop PC printer system.
           </p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -339,17 +337,9 @@ export default function PrintAgentMonitorPage() {
             href="/downloads/KrishnaPrintAgent.jar"
             download
             onClick={() => toast.success("Starting JAR download...")}
-            className="flex-1 sm:flex-initial bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all"
-          >
-            <Download size={14} /> Download JAR
-          </a>
-          <a
-            href="/downloads/KrishnaPrintAgentSetup.exe"
-            download
-            onClick={() => toast.success("Starting installer download...")}
             className="flex-1 sm:flex-initial bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm transition-all"
           >
-            <Download size={14} /> Download Installer
+            <Download size={14} /> Download JAR File
           </a>
         </div>
       </div>

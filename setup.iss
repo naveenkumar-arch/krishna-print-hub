@@ -14,6 +14,7 @@ PrivilegesRequired=admin
 
 [Files]
 Source: "KrishnaPrintAgent.jar"; DestDir: "{app}"; Flags: ignoreversion
+Source: "SumatraPDF.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Krishna Print Agent"; Filename: "javaw.exe"; Parameters: "-jar ""{app}\KrishnaPrintAgent.jar"""; WorkingDir: "{app}"

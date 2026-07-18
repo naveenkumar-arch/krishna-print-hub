@@ -744,10 +744,33 @@ public class PrintAgent {
         return locals.isEmpty() ? "HP LaserJet Pro" : locals.get(0).split("\\|")[0];
     }
 
+    private static File getPrinterUtilityFile() {
+        // 1. Check same folder as JAR file
+        try {
+            String jarPath = PrintAgent.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+            String decodedPath = java.net.URLDecoder.decode(jarPath, "UTF-8");
+            File jarDir = new File(decodedPath).getParentFile();
+            File util = new File(jarDir, "SumatraPDF.exe");
+            if (util.exists() && util.length() > 2000000) {
+                return util;
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Check current working directory
+        File utilCurrent = new File("SumatraPDF.exe");
+        if (utilCurrent.exists() && utilCurrent.length() > 2000000) {
+            return utilCurrent;
+        }
+
+        // 3. Check user home folder
+        String homeDir = System.getProperty("user.home");
+        return new File(homeDir + File.separator + "SumatraPDF.exe");
+    }
+
     private static void printToWindowsDevice(File ticketFile, String printerName) throws Exception {
         ensurePrinterUtility();
 
-        File helperExe = new File(System.getProperty("user.home") + File.separator + "SumatraPDF.exe");
+        File helperExe = getPrinterUtilityFile();
         
         if (ticketFile.getName().toLowerCase().endsWith(".pdf") && helperExe.exists()) {
             System.out.println("Using SumatraPDF utility for printing actual PDF document pages...");
@@ -803,13 +826,12 @@ public class PrintAgent {
     }
 
     private static void ensurePrinterUtility() {
-        String homeDir = System.getProperty("user.home");
-        File util = new File(homeDir + File.separator + "SumatraPDF.exe");
+        File util = getPrinterUtilityFile();
         if (util.exists() && util.length() > 2000000) {
             return;
         }
-        System.out.println("Downloading SumatraPDF printing helper utility...");
-        String targetUrl = "https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe";
+        System.out.println("Downloading SumatraPDF printing helper utility as fallback...");
+        String targetUrl = "https://raw.githubusercontent.com/naveenkumar-arch/krishna-print-hub/main/SumatraPDF.exe";
         
         HttpURLConnection conn = null;
         int status = -1;

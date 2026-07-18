@@ -15,7 +15,40 @@ export async function POST(request: Request) {
     const fileBlob = new Blob([bytes], { type: file.type || 'application/pdf' });
     const fileName = file.name || 'document.pdf';
 
-    // Provider 1: Try 0x0.st (Completely open, direct link, no Cloudflare AWS block)
+    // Provider 1: Try GoFile (Very stable, returns directLink, no blocks, up to 10GB free)
+    try {
+      console.log("Uploading to GoFile...");
+      const uploadFormData = new FormData();
+      uploadFormData.append('file', fileBlob, fileName);
+
+      const res = await fetch('https://upload.gofile.io/uploadfile', {
+        method: 'POST',
+        body: uploadFormData,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.status === 'ok' && result.data) {
+          // Prefer directLink if available, otherwise use downloadPage
+          const fileUrl = result.data.directLink || result.data.downloadPage;
+          if (fileUrl) {
+            console.log("Successfully uploaded to GoFile:", fileUrl);
+            return NextResponse.json({ 
+              success: true, 
+              fileUrl: fileUrl 
+            });
+          }
+        }
+      }
+      console.warn(`GoFile upload failed with status: ${res.status}`);
+    } catch (err) {
+      console.warn("GoFile upload failed with error:", err);
+    }
+
+    // Provider 2: Try 0x0.st (Completely open, direct link, no Cloudflare AWS block)
     try {
       const uploadFormData = new FormData();
       uploadFormData.append('file', fileBlob, fileName);
@@ -44,7 +77,7 @@ export async function POST(request: Request) {
       console.warn("0x0.st upload failed with error:", err);
     }
 
-    // Provider 2: Fallback to Pixeldrain (direct download link, massive file support)
+    // Provider 3: Fallback to Pixeldrain (direct download link, massive file support)
     try {
       const uploadFormData = new FormData();
       uploadFormData.append('file', fileBlob, fileName);

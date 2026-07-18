@@ -10,17 +10,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Extract raw bytes and construct a Blob with original name & type
-    const bytes = await file.arrayBuffer();
-    const fileBlob = new Blob([bytes], { type: file.type || 'application/pdf' });
-    const fileName = file.name || 'document.pdf';
-
     // Provider 1: Try Catbox.moe (Permanent, direct download link, no Vercel IP blocks)
     try {
       console.log("Uploading to Catbox.moe...");
       const catboxFormData = new FormData();
       catboxFormData.append('reqtype', 'fileupload');
-      catboxFormData.append('fileToUpload', fileBlob, fileName);
+      catboxFormData.append('fileToUpload', file); // Use original File directly!
 
       const res = await fetch('https://catbox.moe/user/api.php', {
         method: 'POST',
@@ -50,7 +45,7 @@ export async function POST(request: Request) {
     try {
       console.log("Uploading to Uguu.se...");
       const uguuFormData = new FormData();
-      uguuFormData.append('files[]', fileBlob, fileName);
+      uguuFormData.append('files[]', file); // Use original File directly!
 
       const res = await fetch('https://uguu.se/upload', {
         method: 'POST',
@@ -80,7 +75,7 @@ export async function POST(request: Request) {
     try {
       console.log("Uploading to 0x0.st...");
       const uploadFormData = new FormData();
-      uploadFormData.append('file', fileBlob, fileName);
+      uploadFormData.append('file', file); // Use original File directly!
 
       const res = await fetch('https://0x0.st', {
         method: 'POST',

@@ -8,6 +8,7 @@ import { mockPricing } from '@/lib/mockData';
 export default function PricingPage() {
   const [pricing, setPricing] = useState(mockPricing);
 
+  useEffect(() => {
     // Fetch live config from server
     fetch('/api/config')
       .then(res => res.json())

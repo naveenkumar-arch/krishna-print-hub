@@ -24,3 +24,11 @@ default_config.properties
 
 .vercel
 .env*
+
+db.json
+public/uploads/
+SumatraPDF-settings.txt
+*.pdf
+*.docx
+*.zip
+*.db

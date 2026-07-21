@@ -437,6 +437,8 @@ public class PrintAgent {
         con.setRequestMethod("POST");
         con.setRequestProperty("Content-Type", "application/json");
         con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+        con.setConnectTimeout(5000);
+        con.setReadTimeout(5000);
         con.setDoOutput(true);
 
         StringBuilder printersJson = new StringBuilder();
@@ -527,6 +529,8 @@ public class PrintAgent {
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
         con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+        con.setConnectTimeout(5000);
+        con.setReadTimeout(5000);
 
         int code = con.getResponseCode();
         if (code == 200) {
@@ -681,6 +685,8 @@ public class PrintAgent {
                 HttpURLConnection con = (HttpURLConnection) url.openConnection();
                 con.setRequestMethod("GET");
                 con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+                con.setConnectTimeout(5000);
+                con.setReadTimeout(5000);
                 if (con.getResponseCode() == 200) {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
                         StringBuilder response = new StringBuilder();
@@ -707,6 +713,8 @@ public class PrintAgent {
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
             con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+            con.setConnectTimeout(5000);
+            con.setReadTimeout(5000);
             if (con.getResponseCode() == 200) {
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
                     StringBuilder response = new StringBuilder();
@@ -895,6 +903,8 @@ public class PrintAgent {
             con.setRequestMethod("PUT");
             con.setRequestProperty("Content-Type", "application/json");
             con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+            con.setConnectTimeout(5000);
+            con.setReadTimeout(5000);
             con.setDoOutput(true);
 
             String jsonPayload = "{\"id\":\"" + id + "\",\"status\":\"" + status + "\"}";
@@ -1050,6 +1060,8 @@ public class PrintAgent {
     private static JLabel statusValLabel;
     private static JLabel printerValLabel;
     private static JTextArea logTextArea;
+    private static JTable printerTable;
+    private static javax.swing.table.DefaultTableModel printerTableModel;
 
     private static class CustomPrintStream extends PrintStream {
         private final JTextArea textArea;
@@ -1097,7 +1109,7 @@ public class PrintAgent {
         }
 
         dashboardFrame = new JFrame("Krishna Print Agent Dashboard");
-        dashboardFrame.setSize(520, 420);
+        dashboardFrame.setSize(750, 480);
         dashboardFrame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
         dashboardFrame.setLocationRelativeTo(null);
         dashboardFrame.setResizable(false);
@@ -1110,36 +1122,36 @@ public class PrintAgent {
         JLabel titleLabel = new JLabel("Krishna Print Agent - Live Dashboard");
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
         titleLabel.setForeground(new Color(124, 58, 237));
-        titleLabel.setBounds(20, 15, 480, 25);
+        titleLabel.setBounds(20, 15, 340, 25);
         panel.add(titleLabel);
 
         // Status
         JLabel statusLabel = new JLabel("Connection Status:");
         statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        statusLabel.setBounds(20, 55, 150, 20);
+        statusLabel.setBounds(20, 55, 120, 20);
         panel.add(statusLabel);
 
         statusValLabel = new JLabel("CONNECTING...");
         statusValLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
         statusValLabel.setForeground(Color.ORANGE);
-        statusValLabel.setBounds(180, 55, 300, 20);
+        statusValLabel.setBounds(150, 55, 210, 20);
         panel.add(statusValLabel);
 
         // Default Printer
         JLabel printerLabel = new JLabel("Assigned Printer:");
         printerLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        printerLabel.setBounds(20, 85, 150, 20);
+        printerLabel.setBounds(20, 85, 120, 20);
         panel.add(printerLabel);
 
         printerValLabel = new JLabel(DEFAULT_PRINTER.isEmpty() ? "None Selected" : DEFAULT_PRINTER);
         printerValLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        printerValLabel.setBounds(180, 85, 300, 20);
+        printerValLabel.setBounds(150, 85, 210, 20);
         panel.add(printerValLabel);
 
         // Logs panel
         JLabel logLabel = new JLabel("Live Operations Log:");
         logLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        logLabel.setBounds(20, 120, 480, 20);
+        logLabel.setBounds(20, 120, 340, 20);
         panel.add(logLabel);
 
         logTextArea = new JTextArea();
@@ -1149,35 +1161,94 @@ public class PrintAgent {
         logTextArea.setForeground(new Color(244, 244, 245));
         
         JScrollPane scrollPane = new JScrollPane(logTextArea);
-        scrollPane.setBounds(20, 145, 465, 180);
+        scrollPane.setBounds(20, 145, 340, 200);
         panel.add(scrollPane);
 
         // Reconfigure Button
         JButton configBtn = new JButton("Open Settings");
-        configBtn.setBounds(20, 340, 140, 30);
+        configBtn.setBounds(20, 360, 150, 30);
         configBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
         panel.add(configBtn);
         configBtn.addActionListener(e -> showSetupWizard());
 
         // Exit Button
         JButton exitBtn = new JButton("Shutdown Agent");
-        exitBtn.setBounds(345, 340, 140, 30);
+        exitBtn.setBounds(210, 360, 150, 30);
         exitBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
         panel.add(exitBtn);
         exitBtn.addActionListener(e -> System.exit(0));
 
         // Minimize to Tray info label
-        JLabel infoLabel = new JLabel("Note: Closing this window keeps the agent running in your taskbar system tray.");
+        JLabel infoLabel = new JLabel("Note: Closing this window keeps the agent running in your tray.");
         infoLabel.setFont(new Font("Segoe UI", Font.ITALIC, 10));
         infoLabel.setForeground(Color.GRAY);
-        infoLabel.setBounds(20, 375, 480, 15);
+        infoLabel.setBounds(20, 405, 340, 15);
         panel.add(infoLabel);
+
+        // --- Right Column: Local Printers ---
+        JLabel printersTitleLabel = new JLabel("Detected Local Printers");
+        printersTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        printersTitleLabel.setForeground(new Color(15, 23, 42));
+        printersTitleLabel.setBounds(390, 15, 330, 25);
+        panel.add(printersTitleLabel);
+
+        // Create table model
+        String[] columns = {"Printer Name", "Status", "Toner"};
+        printerTableModel = new javax.swing.table.DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        printerTable = new JTable(printerTableModel);
+        printerTable.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        printerTable.setRowHeight(20);
+        
+        JScrollPane tableScrollPane = new JScrollPane(printerTable);
+        tableScrollPane.setBounds(390, 55, 330, 290);
+        panel.add(tableScrollPane);
+
+        JButton refreshPrintersBtn = new JButton("Refresh Printers List");
+        refreshPrintersBtn.setBounds(390, 360, 330, 30);
+        refreshPrintersBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        panel.add(refreshPrintersBtn);
+        refreshPrintersBtn.addActionListener(e -> populatePrinterTable());
+
+        // Populate table initially
+        populatePrinterTable();
 
         if (customOutStream != null) {
             customOutStream.setTextArea(logTextArea);
         }
 
         dashboardFrame.setVisible(true);
+    }
+
+    private static void populatePrinterTable() {
+        if (printerTableModel == null) return;
+        new Thread(() -> {
+            List<String> list = getWindowsPrinters();
+            SwingUtilities.invokeLater(() -> {
+                printerTableModel.setRowCount(0);
+                for (String raw : list) {
+                    String[] parts = raw.split("\\|");
+                    String name = parts[0];
+                    String rawStatus = parts.length > 1 ? parts[1] : "3";
+                    String rawToner = parts.length > 2 ? parts[2] : "100";
+                    String workOffline = parts.length > 3 ? parts[3] : "False";
+
+                    String status = "Idle";
+                    if ("True".equalsIgnoreCase(workOffline.trim())) {
+                        status = "Offline";
+                    } else if ("4".equals(rawStatus)) {
+                        status = "Printing";
+                    }
+                    
+                    String toner = rawToner.trim().isEmpty() || "null".equalsIgnoreCase(rawToner.trim()) ? "N/A" : rawToner + "%";
+                    printerTableModel.addRow(new Object[]{name, status, toner});
+                }
+            });
+        }).start();
     }
 
     private static void updateDashboardStatus(boolean online, String error) {

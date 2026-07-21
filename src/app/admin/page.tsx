@@ -14,15 +14,25 @@ export default function AdminDashboardPage() {
   const [printers, setPrinters] = useState<any[]>([]);
 
   useEffect(() => {
-    // Load local storage orders database
-    const savedOrders = localStorage.getItem('printOrders');
-    if (savedOrders) {
-      try {
-        setOrders(JSON.parse(savedOrders));
-      } catch (e) {
-        setOrders([]);
-      }
-    }
+    // Load live orders from server
+    fetch('/api/orders')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.orders) {
+          setOrders(data.orders);
+          localStorage.setItem('printOrders', JSON.stringify(data.orders));
+        }
+      })
+      .catch(() => {
+        const savedOrders = localStorage.getItem('printOrders');
+        if (savedOrders) {
+          try {
+            setOrders(JSON.parse(savedOrders));
+          } catch (e) {
+            setOrders([]);
+          }
+        }
+      });
 
     // Check print agent connectivity dynamically
     const checkPrinters = () => {

@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +12,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
     }
 
-    // Provider 1: Try tmpfiles.org (Highly stable, no Vercel IP blocks, direct download link via /dl/ path)
+    // Provider 0: Local Filesystem upload for reliable local development & testing
+    try {
+      console.log("Saving file to local filesystem public/uploads...");
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const safeFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const localFilePath = path.join(uploadsDir, safeFileName);
+      fs.writeFileSync(localFilePath, fileBuffer);
+      
+      const fileUrl = `/uploads/${safeFileName}`;
+      console.log("Successfully saved file locally:", fileUrl);
+      return NextResponse.json({ 
+        success: true, 
+        fileUrl: fileUrl 
+      });
+    } catch (err) {
+      console.warn("Local filesystem upload failed, falling back to cloud providers:", err);
+    }
+
+    // Provider 1: Try tmpfiles.org (Disabled - no longer provides direct links without redirects)
+    /*
     try {
       console.log("Uploading to tmpfiles.org...");
       const tmpFormData = new FormData();
@@ -41,6 +67,7 @@ export async function POST(request: Request) {
     } catch (err) {
       console.warn("tmpfiles.org upload failed with error:", err);
     }
+    */
 
     // Provider 2: Try Catbox.moe (Permanent, direct download link, no Vercel IP blocks)
     try {

@@ -8,15 +8,25 @@ import { mockPricing } from '@/lib/mockData';
 export default function PricingPage() {
   const [pricing, setPricing] = useState(mockPricing);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('pricingConfig');
-    if (saved) {
-      try {
-        setPricing(JSON.parse(saved));
-      } catch (e) {
-        setPricing(mockPricing);
-      }
-    }
+    // Fetch live config from server
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.pricingConfig) {
+          setPricing(data.pricingConfig);
+          localStorage.setItem('pricingConfig', JSON.stringify(data.pricingConfig));
+        }
+      })
+      .catch(() => {
+        const saved = localStorage.getItem('pricingConfig');
+        if (saved) {
+          try {
+            setPricing(JSON.parse(saved));
+          } catch (e) {
+            setPricing(mockPricing);
+          }
+        }
+      });
   }, []);
 
   const formatPrice = (val: number | undefined) => {

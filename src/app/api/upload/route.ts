@@ -4,13 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
-
-// Configure Cloudinary from env
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+export const maxDuration = 30; // 30s timeout for large files
 
 export async function POST(request: Request) {
   try {
@@ -22,123 +16,119 @@ export async function POST(request: Request) {
 
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const safeFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const mimeType = file.type || 'application/octet-stream';
+    const isPDF = mimeType === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-    // ─── Provider 1: Local Filesystem (works on localhost only) ───
-    const isLocalEnv = process.env.NODE_ENV === 'development';
-    if (isLocalEnv) {
+    console.log(`[Upload] File: ${file.name}, type: ${mimeType}, size: ${fileBuffer.length} bytes, isPDF: ${isPDF}`);
+
+    // ─── Provider 1: Local Filesystem (dev only) ───
+    if (process.env.NODE_ENV === 'development') {
       try {
         const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        const localFilePath = path.join(uploadsDir, safeFileName);
-        fs.writeFileSync(localFilePath, fileBuffer);
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+        fs.writeFileSync(path.join(uploadsDir, safeFileName), fileBuffer);
         const fileUrl = `/uploads/${safeFileName}`;
         console.log('[Upload] Saved locally:', fileUrl);
         return NextResponse.json({ success: true, fileUrl });
       } catch (err) {
-        console.warn('[Upload] Local filesystem failed:', err);
+        console.warn('[Upload] Local save failed:', err);
       }
     }
 
-    // ─── Provider 2: Cloudinary (Primary for Vercel) ───
-    const hasCloudinary =
-      process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET;
+    // ─── Provider 2: Cloudinary via base64 (works for PDF, DOCX, PPTX) ───
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
 
-    if (hasCloudinary) {
+    if (cloudName && apiKey && apiSecret) {
+      cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
       try {
-        console.log('[Upload] Uploading to Cloudinary...');
-        const uploadResult = await new Promise<any>((resolve, reject) => {
-          const uploadStream = cloudinary.uploader.upload_stream(
-            {
-              folder: 'krishna-print-hub',
-              resource_type: 'raw', // supports PDF, DOCX, PPTX, etc.
-              public_id: safeFileName.replace(/\.[^/.]+$/, ''), // strip extension
-              use_filename: true,
-              unique_filename: true,
-            },
-            (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
-            }
-          );
-          uploadStream.end(fileBuffer);
+        console.log('[Upload] Uploading to Cloudinary via base64...');
+
+        // Convert buffer to base64 data URI — works reliably for all file types
+        const base64Data = fileBuffer.toString('base64');
+        const dataUri = `data:${mimeType};base64,${base64Data}`;
+
+        const uploadResult = await cloudinary.uploader.upload(dataUri, {
+          folder: 'krishna-print-hub',
+          resource_type: 'raw',        // store as-is: PDF, DOCX, PPTX, etc.
+          public_id: safeFileName,
+          overwrite: false,
         });
 
         const fileUrl = uploadResult.secure_url;
         console.log('[Upload] Cloudinary success:', fileUrl);
         return NextResponse.json({ success: true, fileUrl });
-      } catch (err) {
-        console.warn('[Upload] Cloudinary failed:', err);
+      } catch (err: any) {
+        console.error('[Upload] Cloudinary error:', err?.message || err);
+        // If raw fails for PDF, retry as 'auto' type
+        if (isPDF) {
+          try {
+            console.log('[Upload] Retrying PDF as auto resource type...');
+            const base64Data = fileBuffer.toString('base64');
+            const dataUri = `data:application/pdf;base64,${base64Data}`;
+            const retryResult = await cloudinary.uploader.upload(dataUri, {
+              folder: 'krishna-print-hub',
+              resource_type: 'image',  // Cloudinary supports PDF as image resource
+              public_id: safeFileName,
+              overwrite: false,
+              pages: true,
+            });
+            const fileUrl = retryResult.secure_url;
+            console.log('[Upload] Cloudinary PDF retry success:', fileUrl);
+            return NextResponse.json({ success: true, fileUrl });
+          } catch (retryErr: any) {
+            console.error('[Upload] Cloudinary PDF retry failed:', retryErr?.message || retryErr);
+          }
+        }
       }
     } else {
-      console.warn('[Upload] Cloudinary not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET in env.');
+      console.warn('[Upload] Cloudinary env vars missing:', { cloudName: !!cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret });
     }
 
-    // ─── Provider 3: Catbox.moe fallback ───
+    // ─── Provider 3: Catbox.moe ───
     try {
       console.log('[Upload] Trying Catbox.moe...');
-      const catboxFormData = new FormData();
-      catboxFormData.append('reqtype', 'fileupload');
-      catboxFormData.append('fileToUpload', new Blob([fileBuffer], { type: file.type }), file.name);
-
+      const catboxForm = new FormData();
+      catboxForm.append('reqtype', 'fileupload');
+      catboxForm.append('fileToUpload', new Blob([fileBuffer], { type: mimeType }), file.name);
       const res = await fetch('https://catbox.moe/user/api.php', {
-        method: 'POST',
-        body: catboxFormData,
-        signal: AbortSignal.timeout(15000),
+        method: 'POST', body: catboxForm, signal: AbortSignal.timeout(15000),
       });
-
       if (res.ok) {
         const fileUrl = (await res.text()).trim();
         if (fileUrl.startsWith('https://files.catbox.moe/')) {
-          console.log('[Upload] Catbox.moe success:', fileUrl);
+          console.log('[Upload] Catbox success:', fileUrl);
           return NextResponse.json({ success: true, fileUrl });
         }
       }
-      console.warn('[Upload] Catbox.moe failed, status:', res.status);
-    } catch (err) {
-      console.warn('[Upload] Catbox.moe error:', err);
-    }
+    } catch (err) { console.warn('[Upload] Catbox failed:', err); }
 
-    // ─── Provider 4: Uguu.se fallback ───
+    // ─── Provider 4: Uguu.se ───
     try {
       console.log('[Upload] Trying Uguu.se...');
-      const uguuFormData = new FormData();
-      uguuFormData.append('files[]', new Blob([fileBuffer], { type: file.type }), file.name);
-
+      const uguuForm = new FormData();
+      uguuForm.append('files[]', new Blob([fileBuffer], { type: mimeType }), file.name);
       const res = await fetch('https://uguu.se/upload', {
-        method: 'POST',
-        body: uguuFormData,
-        signal: AbortSignal.timeout(15000),
+        method: 'POST', body: uguuForm, signal: AbortSignal.timeout(15000),
       });
-
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.files?.[0]?.url) {
-          const fileUrl = data.files[0].url;
-          console.log('[Upload] Uguu.se success:', fileUrl);
-          return NextResponse.json({ success: true, fileUrl });
+          console.log('[Upload] Uguu success:', data.files[0].url);
+          return NextResponse.json({ success: true, fileUrl: data.files[0].url });
         }
       }
-      console.warn('[Upload] Uguu.se failed, status:', res.status);
-    } catch (err) {
-      console.warn('[Upload] Uguu.se error:', err);
-    }
+    } catch (err) { console.warn('[Upload] Uguu failed:', err); }
 
-    // ─── Provider 5: 0x0.st final fallback ───
+    // ─── Provider 5: 0x0.st ───
     try {
       console.log('[Upload] Trying 0x0.st...');
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', new Blob([fileBuffer], { type: file.type }), file.name);
-
+      const uploadForm = new FormData();
+      uploadForm.append('file', new Blob([fileBuffer], { type: mimeType }), file.name);
       const res = await fetch('https://0x0.st', {
-        method: 'POST',
-        body: uploadFormData,
-        signal: AbortSignal.timeout(15000),
+        method: 'POST', body: uploadForm, signal: AbortSignal.timeout(15000),
       });
-
       if (res.ok) {
         const fileUrl = (await res.text()).trim();
         if (fileUrl.startsWith('https://0x0.st/')) {
@@ -146,10 +136,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ success: true, fileUrl });
         }
       }
-      console.warn('[Upload] 0x0.st failed, status:', res.status);
-    } catch (err) {
-      console.warn('[Upload] 0x0.st error:', err);
-    }
+    } catch (err) { console.warn('[Upload] 0x0.st failed:', err); }
 
     throw new Error('All cloud storage providers failed to process the request. Please try again.');
   } catch (err: any) {

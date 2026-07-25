@@ -78,6 +78,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Maximum file size allowed is ${rules.maxUploadSizeMB} MB.` }, { status: 400 });
     }
 
+    // Validate file extension against store rules
+    if (fileName) {
+      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+      const allowedExts = rules.allowedFileTypes || ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'png', 'jpeg'];
+      if (ext && allowedExts.length > 0 && !allowedExts.includes(ext)) {
+        return NextResponse.json({ 
+          error: `File type '.${ext}' is not allowed. Permitted formats: ${allowedExts.map(e => e.toUpperCase()).join(', ')}` 
+        }, { status: 400 });
+      }
+    }
+
+    // Validate paper size and duplex availability
+    if (paperSize && rules.allowedPaperSizes && rules.allowedPaperSizes.length > 0) {
+      if (!rules.allowedPaperSizes.map(s => s.toUpperCase()).includes(paperSize.toUpperCase())) {
+        return NextResponse.json({ error: `Paper size '${paperSize}' is not enabled by store admin.` }, { status: 400 });
+      }
+    }
+
+    if (duplex === 'duplex' && rules.allowDuplex === false) {
+      return NextResponse.json({ error: `Double-sided printing is currently disabled by store admin.` }, { status: 400 });
+    }
+
     // Calculate price on server to verify
     let perPagePrice = pricing.A4_BW;
     const size = (paperSize || 'A4').toUpperCase();

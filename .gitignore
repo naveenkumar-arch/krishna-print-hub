@@ -15,9 +15,11 @@ dist/
 # Windows system files
 desktop.ini
 
-# Build artifacts in root (distributable copies are in public/downloads/)
+# Build artifacts in root and public downloads
 /KrishnaPrintAgent.jar
 /KrishnaPrintAgentSetup.exe
+public/downloads/*.exe
+public/downloads/*.jar
 *.class
 manifest.txt
 default_config.properties

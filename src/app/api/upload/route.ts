@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 import path from 'path';
+import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30; // 30s timeout for large files
@@ -14,7 +15,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
+    const rules = await db.getRules();
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const allowedExts = rules.allowedFileTypes || ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'png', 'jpeg'];
+    
+    if (ext && allowedExts.length > 0 && !allowedExts.includes(ext)) {
+      return NextResponse.json({ 
+        error: `File format '.${ext}' is not permitted by store rules. Allowed extensions: ${allowedExts.map(e => e.toUpperCase()).join(', ')}` 
+      }, { status: 400 });
+    }
+
     const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const fileSizeMB = fileBuffer.length / (1024 * 1024);
+    if (rules.maxUploadSizeMB && fileSizeMB > rules.maxUploadSizeMB) {
+      return NextResponse.json({ 
+        error: `File size exceeds the store limit of ${rules.maxUploadSizeMB} MB.` 
+      }, { status: 400 });
+    }
+
     const safeFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
     const mimeType = file.type || 'application/octet-stream';
     const isPDF = mimeType === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');

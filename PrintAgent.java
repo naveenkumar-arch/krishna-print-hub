@@ -213,7 +213,7 @@ public class PrintAgent {
                     writer.write("=========================================\n");
                     writer.write("Spool test page dispatched successfully.\n");
                 }
-                printToWindowsDevice(tempFile, selectedPrn);
+                printToWindowsDevice(tempFile, selectedPrn, null);
                 JOptionPane.showMessageDialog(frame, "✓ Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
                 
                 new Thread(() -> {
@@ -590,7 +590,7 @@ public class PrintAgent {
                 updateOrderStatus(orderId, "printing");
                 System.out.println("Sending actual document (" + file + ") to Windows Print Spooler...");
                 
-                printToWindowsDevice(downloadedFile, targetPrinter);
+                printToWindowsDevice(downloadedFile, targetPrinter, order);
                 
                 Thread.sleep(15000);
                 updateOrderStatus(orderId, "completed");
@@ -619,7 +619,7 @@ public class PrintAgent {
                     writer.write("=========================================\n");
                 }
 
-                printToWindowsDevice(tempTicket, targetPrinter);
+                printToWindowsDevice(tempTicket, targetPrinter, order);
 
                 Thread.sleep(15000);
                 updateOrderStatus(orderId, "completed");
@@ -802,7 +802,7 @@ public class PrintAgent {
         return new File(homeDir + File.separator + "SumatraPDF.exe");
     }
 
-    private static void printToWindowsDevice(File ticketFile, String printerName) throws Exception {
+    private static void printToWindowsDevice(File ticketFile, String printerName, Map<String, String> orderParams) throws Exception {
         ensurePrinterUtility();
 
         File helperExe = getPrinterUtilityFile();
@@ -826,6 +826,73 @@ public class PrintAgent {
             } else {
                 cmd.add("-print-to-default");
             }
+
+            // Build SumatraPDF print settings
+            List<String> settingsList = new ArrayList<>();
+            if (orderParams != null) {
+                // 1. Copies (e.g. 2x)
+                String copies = orderParams.get("copies");
+                if (copies != null && !copies.trim().isEmpty()) {
+                    try {
+                        int numCopies = Integer.parseInt(copies.trim());
+                        if (numCopies > 1) {
+                            settingsList.add(numCopies + "x");
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                // 2. Duplex (Double-sided printing)
+                String duplex = orderParams.get("duplex");
+                if (duplex != null && !duplex.trim().isEmpty()) {
+                    String dLower = duplex.trim().toLowerCase();
+                    if (dLower.contains("duplex") || dLower.contains("double") || dLower.equals("long") || dLower.equals("duplexlong")) {
+                        settingsList.add("duplexlong");
+                    } else if (dLower.contains("short") || dLower.equals("duplexshort")) {
+                        settingsList.add("duplexshort");
+                    } else if (dLower.contains("simplex") || dLower.contains("single")) {
+                        settingsList.add("simplex");
+                    }
+                }
+
+                // 3. Color vs B&W
+                String colorMode = orderParams.get("colorMode");
+                if (colorMode != null && !colorMode.trim().isEmpty()) {
+                    String cLower = colorMode.trim().toLowerCase();
+                    if (cLower.contains("color")) {
+                        settingsList.add("color");
+                    } else if (cLower.contains("bw") || cLower.contains("monochrome") || cLower.contains("black")) {
+                        settingsList.add("monochrome");
+                    }
+                }
+
+                // 4. Paper Size (A4, A3, Letter, Legal)
+                String paperSize = orderParams.get("paperSize");
+                if (paperSize != null && !paperSize.trim().isEmpty()) {
+                    String pSize = paperSize.trim().toUpperCase();
+                    if ("A4".equals(pSize) || "A3".equals(pSize) || "LETTER".equals(pSize) || "LEGAL".equals(pSize) || "A5".equals(pSize)) {
+                        settingsList.add("paper=" + pSize);
+                    }
+                }
+
+                // 5. Orientation (portrait / landscape)
+                String orientation = orderParams.get("orientation");
+                if (orientation != null && !orientation.trim().isEmpty()) {
+                    String oLower = orientation.trim().toLowerCase();
+                    if (oLower.contains("landscape")) {
+                        settingsList.add("landscape");
+                    } else if (oLower.contains("portrait")) {
+                        settingsList.add("portrait");
+                    }
+                }
+            }
+
+            if (!settingsList.isEmpty()) {
+                String printSettingsStr = String.join(",", settingsList);
+                System.out.println("Applying SumatraPDF print settings: " + printSettingsStr);
+                cmd.add("-print-settings");
+                cmd.add(printSettingsStr);
+            }
+
             cmd.add(ticketFile.getAbsolutePath());
             
             ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -963,7 +1030,19 @@ public class PrintAgent {
             }
             p.waitFor();
         } catch (Exception e) {
-            System.err.println("Failed to fetch Windows printers WMI status: " + e.getMessage());
+            System.err.println("Failed to fetch Windows printers via PowerShell: " + e.getMessage());
+        }
+
+        // Fallback: Use standard Java Print API (Win32 Spooler) if PowerShell is restricted/blocked
+        if (list.isEmpty()) {
+            try {
+                javax.print.PrintService[] services = javax.print.PrintServiceLookup.lookupPrintServices(null, null);
+                for (javax.print.PrintService service : services) {
+                    list.add(service.getName() + "|3|100|False");
+                }
+            } catch (Exception err) {
+                System.err.println("Failed to lookup Java PrintServices fallback: " + err.getMessage());
+            }
         }
         return list;
     }

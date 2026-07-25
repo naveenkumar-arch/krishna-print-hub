@@ -5,6 +5,9 @@ echo   PACKAGING WINDOWS NATIVE STANDALONE INSTALLER
 echo ==================================================
 echo.
 
+:: -1. Kill any running javaw.exe process to release file lock on KrishnaPrintAgent.jar
+taskkill /F /IM javaw.exe 2>nul
+
 :: 0. Ensure SumatraPDF printing helper exists locally to be packaged
 if exist SumatraPDF.exe (
     for %%I in (SumatraPDF.exe) do (

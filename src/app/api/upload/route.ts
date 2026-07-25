@@ -53,61 +53,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // ─── Provider 2: Cloudinary via base64 (works for PDF, DOCX, PPTX) ───
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-
-    if (cloudName && apiKey && apiSecret) {
-      cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
-      try {
-        console.log('[Upload] Uploading to Cloudinary via base64...');
-
-        // Convert buffer to base64 data URI — works reliably for all file types
-        const base64Data = fileBuffer.toString('base64');
-        const dataUri = `data:${mimeType};base64,${base64Data}`;
-
-        const uploadResult = await cloudinary.uploader.upload(dataUri, {
-          folder: 'krishna-print-hub',
-          resource_type: isPDF ? 'auto' : 'raw', // 'auto' ensures PDFs are publicly accessible on Cloudinary
-          access_mode: 'public',
-          public_id: safeFileName,
-          overwrite: false,
-        });
-
-        const fileUrl = uploadResult.secure_url;
-        console.log('[Upload] Cloudinary success:', fileUrl);
-        return NextResponse.json({ success: true, fileUrl });
-      } catch (err: any) {
-        console.error('[Upload] Cloudinary error:', err?.message || err);
-        // If raw fails for PDF, retry as 'auto' type
-        if (isPDF) {
-          try {
-            console.log('[Upload] Retrying PDF as auto resource type...');
-            const base64Data = fileBuffer.toString('base64');
-            const dataUri = `data:application/pdf;base64,${base64Data}`;
-            const retryResult = await cloudinary.uploader.upload(dataUri, {
-              folder: 'krishna-print-hub',
-              resource_type: 'image',  // Cloudinary supports PDF as image resource
-              public_id: safeFileName,
-              overwrite: false,
-              pages: true,
-            });
-            const fileUrl = retryResult.secure_url;
-            console.log('[Upload] Cloudinary PDF retry success:', fileUrl);
-            return NextResponse.json({ success: true, fileUrl });
-          } catch (retryErr: any) {
-            console.error('[Upload] Cloudinary PDF retry failed:', retryErr?.message || retryErr);
-          }
-        }
-      }
-    } else {
-      console.warn('[Upload] Cloudinary env vars missing:', { cloudName: !!cloudName, apiKey: !!apiKey, apiSecret: !!apiSecret });
-    }
-
-    // ─── Provider 3: Catbox.moe ───
+    // ─── Provider 2: Catbox.moe (Direct 200 OK public file host for PDF/DOCX) ───
     try {
-      console.log('[Upload] Trying Catbox.moe...');
+      console.log('[Upload] Trying Catbox.moe for direct public file URL...');
       const catboxForm = new FormData();
       catboxForm.append('reqtype', 'fileupload');
       catboxForm.append('fileToUpload', new Blob([fileBuffer], { type: mimeType }), file.name);
@@ -122,6 +70,36 @@ export async function POST(request: Request) {
         }
       }
     } catch (err) { console.warn('[Upload] Catbox failed:', err); }
+
+    // ─── Provider 3: Cloudinary via base64 ───
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const apiKey = process.env.CLOUDINARY_API_KEY;
+    const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+    if (cloudName && apiKey && apiSecret) {
+      cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+      try {
+        console.log('[Upload] Uploading to Cloudinary via base64...');
+
+        const base64Data = fileBuffer.toString('base64');
+        const dataUri = `data:${mimeType};base64,${base64Data}`;
+
+        const uploadResult = await cloudinary.uploader.upload(dataUri, {
+          folder: 'krishna-print-hub',
+          resource_type: isPDF ? 'image' : 'raw',
+          format: isPDF ? 'pdf' : undefined,
+          access_mode: 'public',
+          public_id: safeFileName,
+          overwrite: false,
+        });
+
+        const fileUrl = uploadResult.secure_url;
+        console.log('[Upload] Cloudinary success:', fileUrl);
+        return NextResponse.json({ success: true, fileUrl });
+      } catch (err: any) {
+        console.error('[Upload] Cloudinary error:', err?.message || err);
+      }
+    }
 
     // ─── Provider 4: Uguu.se ───
     try {

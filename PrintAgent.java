@@ -676,8 +676,18 @@ public class PrintAgent {
             }
         }
 
+        if (status == 401 && targetUrl.contains("cloudinary.com/") && targetUrl.contains("/raw/upload/")) {
+            System.out.println("Cloudinary raw URL returned 401. Retrying via image resource endpoint...");
+            targetUrl = targetUrl.replace("/raw/upload/", "/image/upload/");
+            URL retryUrl = new URL(targetUrl.replace(" ", "%20").replace("(", "%28").replace(")", "%29"));
+            con = (HttpURLConnection) retryUrl.openConnection();
+            con.setRequestMethod("GET");
+            con.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36");
+            status = con.getResponseCode();
+        }
+
         if (status != 200) {
-            throw new IOException("Server returned HTTP status " + status);
+            throw new IOException("Failed to download PDF document file (HTTP " + status + ") from: " + targetUrl);
         }
 
         try (InputStream in = con.getInputStream();

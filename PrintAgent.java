@@ -12,7 +12,7 @@ import com.sun.net.httpserver.*;
 public class PrintAgent {
     // Default API endpoint setups (points to your Vercel deployment URL)
     private static String BASE_URL = "https://krishna-students-print-hub.vercel.app";
-    private static String AUTH_TOKEN = "";
+    private static String AUTH_TOKEN = "KP-DEMO-TOKEN-9988";
     private static String DEFAULT_PRINTER = "";
     private static boolean AUTO_START_ENABLED = true;
     private static final int PORT = 4000;

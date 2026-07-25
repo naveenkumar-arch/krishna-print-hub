@@ -100,9 +100,48 @@ export default function AdminQueuePage() {
 
   // Automated printing progression simulation disabled to prevent fake status overrides
 
-  const handlePauseToggle = () => {
-    setIsPaused(!isPaused);
-    toast.success(isPaused ? "Print agent queue resumed." : "Print agent queue paused.");
+  const [editingJob, setEditingJob] = useState<any | null>(null);
+
+  const handlePauseToggle = async () => {
+    const nextState = !isPaused;
+    setIsPaused(nextState);
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoPrintEnabled: !nextState })
+      });
+      toast.success(nextState ? "Print agent queue paused." : "Print agent queue resumed.");
+    } catch (err) {
+      toast.error("Failed to sync pause state.");
+    }
+  };
+
+  const handleSaveEditedJob = async () => {
+    if (!editingJob) return;
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingJob)
+      });
+      if (res.ok) {
+        toast.success(`Updated settings for Order ${editingJob.id}`);
+        setEditingJob(null);
+        // Refresh queue
+        fetch('/api/orders')
+          .then(r => r.json())
+          .then(data => {
+            if (data?.orders) {
+              setQueuedJobs(data.orders.filter((o: any) => o.status === 'queued'));
+            }
+          });
+      } else {
+        toast.error("Failed to save order settings.");
+      }
+    } catch (e) {
+      toast.error("Error saving order settings.");
+    }
   };
 
   const handleCancelJob = () => {
@@ -232,15 +271,104 @@ export default function AdminQueuePage() {
                         </span>
                       </div>
                     </div>
-                    <div className="text-right text-slate-500 font-medium">
-                      <span>{job.pages}p × {job.copies}</span>
-                      <span className="block text-[9px] uppercase font-bold text-slate-400">{job.paperSize}</span>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right text-slate-500 font-medium">
+                        <span>{job.pages}p × {job.copies}</span>
+                        <span className="block text-[9px] uppercase font-bold text-slate-400">{job.paperSize} · {job.colorMode} · {job.duplex}</span>
+                      </div>
+                      <button
+                        onClick={() => setEditingJob({ ...job })}
+                        className="bg-brand-50 hover:bg-brand-100 text-brand-700 text-[10px] font-bold px-2.5 py-1 rounded border border-brand-200"
+                      >
+                        Edit Options
+                      </button>
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
+
+          {/* Edit Order Options Modal */}
+          {editingJob && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="font-extrabold text-slate-900 text-sm">Edit Print Options ({editingJob.id})</h3>
+                  <button onClick={() => setEditingJob(null)} className="text-slate-400 hover:text-slate-600">
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Copies</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={editingJob.copies || 1}
+                      onChange={e => setEditingJob({ ...editingJob, copies: Math.max(1, parseInt(e.target.value) || 1) })}
+                      className="w-full border rounded-lg p-2 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Color Mode</label>
+                    <select
+                      value={editingJob.colorMode || 'bw'}
+                      onChange={e => setEditingJob({ ...editingJob, colorMode: e.target.value })}
+                      className="w-full border rounded-lg p-2 font-bold"
+                    >
+                      <option value="bw">Black & White (Monochrome)</option>
+                      <option value="color">Color</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Duplex (Sides)</label>
+                    <select
+                      value={editingJob.duplex || 'simplex'}
+                      onChange={e => setEditingJob({ ...editingJob, duplex: e.target.value })}
+                      className="w-full border rounded-lg p-2 font-bold"
+                    >
+                      <option value="simplex">Single-sided (Simplex)</option>
+                      <option value="duplex">Double-sided (Duplex)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Paper Size</label>
+                    <select
+                      value={editingJob.paperSize || 'A4'}
+                      onChange={e => setEditingJob({ ...editingJob, paperSize: e.target.value })}
+                      className="w-full border rounded-lg p-2 font-bold"
+                    >
+                      <option value="A4">A4</option>
+                      <option value="A3">A3</option>
+                      <option value="Letter">Letter</option>
+                      <option value="Legal">Legal</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-3 border-t">
+                  <button
+                    onClick={() => setEditingJob(null)}
+                    className="flex-1 btn-secondary text-xs py-2"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveEditedJob}
+                    className="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs py-2 rounded-xl"
+                  >
+                    Save & Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Completed Jobs today */}
           <div className="card-premium bg-white overflow-hidden">

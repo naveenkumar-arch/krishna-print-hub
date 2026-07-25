@@ -95,6 +95,9 @@ export async function POST(request: Request) {
     if (body.printers && !body.lastAgentPing) {
       await db.savePrinters(body.printers);
     }
+    if (body.autoPrintEnabled !== undefined) {
+      await db.saveAutoPrintEnabled(Boolean(body.autoPrintEnabled));
+    }
     if (body.agentConnectionKey) {
       await db.kvSet('agentConnectionKey', body.agentConnectionKey);
     }

@@ -652,7 +652,10 @@ public class PrintAgent {
             if (targetUrl.contains("tmpfiles.org/") && !targetUrl.contains("tmpfiles.org/dl/")) {
                 targetUrl = targetUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/");
             }
-            URL url = new URL(targetUrl);
+            
+            // Encode spaces and special characters for java.net.URL safety
+            String encodedUrl = targetUrl.replace(" ", "%20").replace("(", "%28").replace(")", "%29");
+            URL url = new URL(encodedUrl);
             con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
             con.setConnectTimeout(10000);
@@ -827,42 +830,37 @@ public class PrintAgent {
                 cmd.add("-print-to-default");
             }
 
-            // Build SumatraPDF print settings
+            // Build SumatraPDF print settings to explicitly override printer driver defaults
             List<String> settingsList = new ArrayList<>();
             if (orderParams != null) {
-                // 1. Copies (e.g. 2x)
+                // 1. Copies: ALWAYS pass "1x", "2x", "3x" so printer driver defaults (e.g. 2 copies) are overridden
                 String copies = orderParams.get("copies");
+                int numCopies = 1;
                 if (copies != null && !copies.trim().isEmpty()) {
                     try {
-                        int numCopies = Integer.parseInt(copies.trim());
-                        if (numCopies > 1) {
-                            settingsList.add(numCopies + "x");
-                        }
+                        numCopies = Math.max(1, Integer.parseInt(copies.trim()));
                     } catch (Exception ignored) {}
                 }
+                settingsList.add(numCopies + "x");
 
-                // 2. Duplex (Double-sided printing)
+                // 2. Duplex (Double-sided printing): ALWAYS pass duplexlong or simplex
                 String duplex = orderParams.get("duplex");
-                if (duplex != null && !duplex.trim().isEmpty()) {
-                    String dLower = duplex.trim().toLowerCase();
-                    if (dLower.contains("duplex") || dLower.contains("double") || dLower.equals("long") || dLower.equals("duplexlong")) {
-                        settingsList.add("duplexlong");
-                    } else if (dLower.contains("short") || dLower.equals("duplexshort")) {
-                        settingsList.add("duplexshort");
-                    } else if (dLower.contains("simplex") || dLower.contains("single")) {
-                        settingsList.add("simplex");
-                    }
+                String dLower = duplex != null ? duplex.trim().toLowerCase() : "";
+                if (dLower.contains("duplex") || dLower.contains("double") || dLower.equals("long") || dLower.equals("duplexlong")) {
+                    settingsList.add("duplexlong");
+                } else if (dLower.contains("short") || dLower.equals("duplexshort")) {
+                    settingsList.add("duplexshort");
+                } else {
+                    settingsList.add("simplex");
                 }
 
-                // 3. Color vs B&W
+                // 3. Color Mode: ALWAYS pass monochrome or color
                 String colorMode = orderParams.get("colorMode");
-                if (colorMode != null && !colorMode.trim().isEmpty()) {
-                    String cLower = colorMode.trim().toLowerCase();
-                    if (cLower.contains("color")) {
-                        settingsList.add("color");
-                    } else if (cLower.contains("bw") || cLower.contains("monochrome") || cLower.contains("black")) {
-                        settingsList.add("monochrome");
-                    }
+                String cLower = colorMode != null ? colorMode.trim().toLowerCase() : "";
+                if (cLower.contains("color")) {
+                    settingsList.add("color");
+                } else {
+                    settingsList.add("monochrome");
                 }
 
                 // 4. Paper Size (A4, A3, Letter, Legal)
@@ -872,17 +870,17 @@ public class PrintAgent {
                     if ("A4".equals(pSize) || "A3".equals(pSize) || "LETTER".equals(pSize) || "LEGAL".equals(pSize) || "A5".equals(pSize)) {
                         settingsList.add("paper=" + pSize);
                     }
+                } else {
+                    settingsList.add("paper=A4");
                 }
 
                 // 5. Orientation (portrait / landscape)
                 String orientation = orderParams.get("orientation");
-                if (orientation != null && !orientation.trim().isEmpty()) {
-                    String oLower = orientation.trim().toLowerCase();
-                    if (oLower.contains("landscape")) {
-                        settingsList.add("landscape");
-                    } else if (oLower.contains("portrait")) {
-                        settingsList.add("portrait");
-                    }
+                String oLower = orientation != null ? orientation.trim().toLowerCase() : "";
+                if (oLower.contains("landscape")) {
+                    settingsList.add("landscape");
+                } else {
+                    settingsList.add("portrait");
                 }
             }
 

@@ -676,6 +676,24 @@ public class PrintAgent {
                 out.write(buffer, 0, bytesRead);
             }
         }
+
+        // Validate downloaded file content to prevent printing HTML error pages on paper
+        if (destination.exists() && destination.length() > 0) {
+            byte[] header = new byte[Math.min(500, (int) destination.length())];
+            try (FileInputStream fis = new FileInputStream(destination)) {
+                int readBytes = fis.read(header);
+                String headStr = new String(header, 0, readBytes, StandardCharsets.UTF_8).toLowerCase();
+                
+                if (headStr.contains("<!doctype html") || headStr.contains("<html") || headStr.contains("404 not found")) {
+                    destination.delete();
+                    throw new IOException("The file URL returned an HTML web page (e.g. 404 error or landing page) instead of the actual document file: " + fullUrl);
+                }
+                
+                if (destination.getName().toLowerCase().endsWith(".pdf") && !headStr.startsWith("%pdf")) {
+                    System.err.println("[WARNING] Downloaded PDF header does not start with '%PDF'. Header preview: " + headStr.substring(0, Math.min(30, headStr.length())));
+                }
+            }
+        }
     }
 
     private static String determineTargetPrinter(String paperSize, String colorMode, String assignedPrinterId) {

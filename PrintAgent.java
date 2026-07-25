@@ -970,7 +970,7 @@ public class PrintAgent {
             String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
             String fullCmd;
             if (printerName != null && !printerName.trim().isEmpty() && !printerName.equalsIgnoreCase("HP LaserJet Pro")) {
-                String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
+                String setPrinterCmd = "(Get-WmiObject -Class Win32_Printer | Where-Object { $_.Name -eq '" + printerName.replace("'", "''") + "' }).SetDefaultPrinter()";
                 fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
             } else {
                 fullCmd = spoolCmd;

@@ -1,32 +1,35 @@
 @echo off
 title Krishna Students Print Hub - Shop Systems Launch
 echo ====================================================
-echo   KRISHNA STUDENTS PRINT HUB - AUTO-LAUNCH SERVER
+echo   KRISHNA STUDENTS PRINT HUB - LOCAL SHOP LAUNCHER
 echo ====================================================
 echo.
 
-echo Checking Node dependencies in the backend. Please wait...
-if not exist node_modules\whatsapp-web.js (
-    echo.
-    echo [SETUP] WhatsApp modules are missing. Installing now...
-    echo [SETUP] This runs once in the backend and may take a moment.
-    call npm install whatsapp-web.js qrcode-terminal --no-audit --no-fund
-    echo [SETUP] Installation complete!
-) else (
-    echo [SETUP] Dependencies verified successfully.
+where node >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [ERROR] Node.js is not installed on this PC.
+    echo Please download and install Node.js from https://nodejs.org to run the portal locally.
+    echo Opening https://nodejs.org in your browser...
+    start https://nodejs.org
+    pause
+    exit /b 1
 )
 
-echo.
-echo [1/2] Note: The Print Queue is now handled by the standalone Java Desktop GUI app.
-echo       Ensure the "Krishna Students Print Agent" is running in your Windows taskbar.
-echo.
-echo [2/2] Starting WhatsApp Bot Controller (Chatbot)...
-start "WhatsApp Bot" cmd /k "node whatsapp-bot.js"
+echo [1/3] Starting Local Web Portal Server (Next.js)...
+start "Local Print Hub Web Server" cmd /k "cd /d "%~dp0" && npm run dev"
 
-echo.
+echo [2/3] Launching Java Print Agent...
+start "Krishna Print Agent" cmd /k "cd /d "%~dp0" && java -jar KrishnaPrintAgent.jar"
+
+echo [3/3] Opening Local Portals in Browser...
+timeout /t 5 >nul
+start http://localhost:3000
+start http://localhost:3000/admin/queue
+
 echo ====================================================
-echo   SUCCESS: Launching WhatsApp Chatbot!
-echo   - Keep this window running while the shop is open.
+echo   SUCCESS: Local Portals & Print Agent Started!
+echo   - Customer Portal : http://localhost:3000
+echo   - Admin Queue     : http://localhost:3000/admin/queue
 echo ====================================================
 echo.
 pause

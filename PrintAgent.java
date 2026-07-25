@@ -113,20 +113,42 @@ public class PrintAgent {
         titleLabel.setBounds(30, 15, 390, 25);
         panel.add(titleLabel);
 
+        // Environment Selector (Local Server vs Vercel Production)
+        JLabel envLabel = new JLabel("Environment Mode:");
+        envLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        envLabel.setBounds(30, 50, 390, 15);
+        panel.add(envLabel);
+
+        JRadioButton localModeRadio = new JRadioButton("Local Mode (http://localhost:3000)", BASE_URL.contains("localhost"));
+        localModeRadio.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        localModeRadio.setBackground(new Color(248, 250, 252));
+        localModeRadio.setBounds(30, 68, 390, 20);
+
+        JRadioButton prodModeRadio = new JRadioButton("Live Vercel Production App", !BASE_URL.contains("localhost"));
+        prodModeRadio.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        prodModeRadio.setBackground(new Color(248, 250, 252));
+        prodModeRadio.setBounds(30, 88, 390, 20);
+
+        ButtonGroup envGroup = new ButtonGroup();
+        envGroup.add(localModeRadio);
+        envGroup.add(prodModeRadio);
+        panel.add(localModeRadio);
+        panel.add(prodModeRadio);
+
         // Shop Access Token Field (Connection Key)
         JLabel tokenLabel = new JLabel("Connection Key:");
         tokenLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        tokenLabel.setBounds(30, 55, 390, 15);
+        tokenLabel.setBounds(30, 115, 390, 15);
         panel.add(tokenLabel);
 
         JPasswordField tokenField = new JPasswordField(AUTH_TOKEN);
-        tokenField.setBounds(30, 75, 390, 25);
+        tokenField.setBounds(30, 132, 390, 25);
         panel.add(tokenField);
 
         // Connected Printer Dropdown Selection
         JLabel printerLabel = new JLabel("Connect Printer:");
         printerLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        printerLabel.setBounds(30, 110, 390, 15);
+        printerLabel.setBounds(30, 162, 390, 15);
         panel.add(printerLabel);
 
         Vector<String> printerNames = new Vector<>();
@@ -142,7 +164,7 @@ public class PrintAgent {
         }
         
         JComboBox<String> printerDropdown = new JComboBox<>(printerNames);
-        printerDropdown.setBounds(30, 130, 390, 25);
+        printerDropdown.setBounds(30, 180, 390, 25);
         if (!DEFAULT_PRINTER.isEmpty() && printerNames.contains(DEFAULT_PRINTER)) {
             printerDropdown.setSelectedItem(DEFAULT_PRINTER);
         }
@@ -152,12 +174,12 @@ public class PrintAgent {
         JCheckBox startChk = new JCheckBox("Auto Start with Windows", AUTO_START_ENABLED);
         startChk.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         startChk.setBackground(new Color(248, 250, 252));
-        startChk.setBounds(30, 165, 390, 20);
+        startChk.setBounds(30, 210, 390, 20);
         panel.add(startChk);
 
         // Connection Test Button
         JButton testBtn = new JButton("Test Server Connection");
-        testBtn.setBounds(30, 200, 190, 30);
+        testBtn.setBounds(30, 235, 190, 30);
         testBtn.setFont(new Font("Segoe UI", Font.BOLD, 11));
         testBtn.setUI(new javax.swing.plaf.basic.BasicButtonUI());
         testBtn.setBackground(new java.awt.Color(226, 232, 240)); // Slate-200
@@ -238,6 +260,13 @@ public class PrintAgent {
             String token = new String(tokenField.getPassword()).trim();
             String selectedPrn = (String) printerDropdown.getSelectedItem();
             boolean autostart = startChk.isSelected();
+
+            // Set BASE_URL based on environment radio choice
+            if (localModeRadio.isSelected()) {
+                BASE_URL = "http://localhost:3000";
+            } else {
+                BASE_URL = "https://krishna-students-print-hub.vercel.app";
+            }
 
             // Save variables
             AUTH_TOKEN = token;

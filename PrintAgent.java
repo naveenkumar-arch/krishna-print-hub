@@ -779,7 +779,17 @@ public class PrintAgent {
         } catch (Exception ignored) {}
 
         List<String> locals = getWindowsPrinters();
-        return locals.isEmpty() ? "HP LaserJet Pro" : locals.get(0).split("\\|")[0];
+        if (!locals.isEmpty()) {
+            for (String raw : locals) {
+                String pName = raw.split("\\|")[0];
+                String pLower = pName.toLowerCase();
+                if (!pLower.contains("microsoft print to pdf") && !pLower.contains("fax") && !pLower.contains("xps") && !pLower.contains("onenote")) {
+                    return pName;
+                }
+            }
+            return locals.get(0).split("\\|")[0];
+        }
+        return "HP LaserJet Pro";
     }
 
     private static File getPrinterUtilityFile() {
@@ -907,14 +917,20 @@ public class PrintAgent {
             }
             int exitCode = p.waitFor();
             if (exitCode != 0) {
-                throw new Exception("SumatraPDF failed (Exit Code: " + exitCode + "). Output: " + output.toString());
+                System.err.println("SumatraPDF returned exit code " + exitCode + ". Output: " + output.toString() + ". Executing Windows Print Verb fallback...");
+                executeWindowsVerbPrint(ticketFile, printerName);
             }
         } else {
-            // Fallback to default print verb for text files (receipts)
-            System.out.println("Using default Windows Verb Print for receipt/text file.");
+            executeWindowsVerbPrint(ticketFile, printerName);
+        }
+    }
+
+    private static void executeWindowsVerbPrint(File ticketFile, String printerName) {
+        try {
+            System.out.println("Using default Windows Verb Print for file spooling...");
             String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
             String fullCmd;
-            if (printerName != null && !printerName.trim().isEmpty()) {
+            if (printerName != null && !printerName.trim().isEmpty() && !printerName.equalsIgnoreCase("HP LaserJet Pro")) {
                 String setPrinterCmd = "Set-DefaultPrinter -Name \"" + printerName + "\"";
                 fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
             } else {
@@ -931,6 +947,8 @@ public class PrintAgent {
                 }
             }
             p.waitFor();
+        } catch (Exception e) {
+            System.err.println("Windows Verb Print fallback failed: " + e.getMessage());
         }
     }
 

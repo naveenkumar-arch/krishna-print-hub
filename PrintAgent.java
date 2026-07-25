@@ -638,17 +638,26 @@ public class PrintAgent {
     private static void downloadFile(String fileUrl, File destination) throws Exception {
         String fullUrl = fileUrl.startsWith("http") ? fileUrl : BASE_URL + fileUrl;
         
+        // Auto-fix tmpfiles.org URLs to direct download subpath (/dl/)
+        if (fullUrl.contains("tmpfiles.org/") && !fullUrl.contains("tmpfiles.org/dl/")) {
+            fullUrl = fullUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/");
+        }
+
         HttpURLConnection con = null;
         int status = -1;
         String targetUrl = fullUrl;
         
         // Loop up to 5 times for HTTP redirects (e.g. S3 / tmpfiles.org buckets)
         for (int i = 0; i < 5; i++) {
+            if (targetUrl.contains("tmpfiles.org/") && !targetUrl.contains("tmpfiles.org/dl/")) {
+                targetUrl = targetUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/");
+            }
             URL url = new URL(targetUrl);
             con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
             con.setConnectTimeout(10000);
             con.setReadTimeout(15000);
+            con.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             
             // Only add connection authentication header if it's pointing to our own backend
             if (!targetUrl.startsWith("http") || targetUrl.startsWith(BASE_URL)) {

@@ -69,7 +69,8 @@ export async function POST(request: Request) {
 
         const uploadResult = await cloudinary.uploader.upload(dataUri, {
           folder: 'krishna-print-hub',
-          resource_type: 'raw',        // store as-is: PDF, DOCX, PPTX, etc.
+          resource_type: isPDF ? 'auto' : 'raw', // 'auto' ensures PDFs are publicly accessible on Cloudinary
+          access_mode: 'public',
           public_id: safeFileName,
           overwrite: false,
         });

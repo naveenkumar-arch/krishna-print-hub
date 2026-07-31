@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { mockShopSettings, mockPricing, mockRules } from '@/lib/mockData';
 import { PDF_TOOLS } from '@/lib/pdfToolsData';
+import PDFFooter from '@/components/pdf/PDFFooter';
 import toast from 'react-hot-toast';
 
 export default function LandingPage() {
@@ -844,17 +845,7 @@ export default function LandingPage() {
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-white border-t border-slate-200 mt-auto py-6">
-        <div className="max-w-5xl mx-auto px-4 text-xs text-slate-400 flex justify-between items-center">
-          <div>© 2026 {shopSettings.name}. All rights reserved.</div>
-          <div className="flex gap-4">
-            <Link href="/privacy" className="hover:text-slate-600">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-slate-600">Terms of Service</Link>
-            <Link href="/tools" className="hover:text-slate-600 font-semibold text-brand-600">PDF Tools</Link>
-            <Link href="/admin/login" className="hover:text-slate-600 font-semibold text-brand-600">Admin Login</Link>
-          </div>
-        </div>
-      </footer>
+      <PDFFooter shopName={shopSettings.name} />
 
       {/* CONFIGURE DIALOG MODAL */}
       {showConfig && selectedFile && (

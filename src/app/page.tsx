@@ -10,6 +10,7 @@ import {
   Info, MessageCircle, AlertTriangle, Send 
 } from 'lucide-react';
 import { mockShopSettings, mockPricing, mockRules } from '@/lib/mockData';
+import { PDF_TOOLS } from '@/lib/pdfToolsData';
 import toast from 'react-hot-toast';
 
 export default function LandingPage() {
@@ -428,6 +429,7 @@ export default function LandingPage() {
 
           <nav className="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
             <Link href="/" className="text-brand-600 hover:text-brand-700">Home</Link>
+            <Link href="/tools" className="hover:text-brand-600 flex items-center gap-1 font-bold text-brand-600">PDF Tools</Link>
             <Link href="/track" className="hover:text-brand-600">Track Order</Link>
             <Link href="/how-it-works" className="hover:text-brand-600">How It Works</Link>
             <Link href="/pricing" className="hover:text-brand-600">Pricing</Link>
@@ -649,6 +651,78 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+      {/* HOW IT WORKS SECTION */}
+      <section className="max-w-5xl mx-auto px-4 py-10 w-full">
+        <div className="text-center mb-8">
+          <span className="bg-brand-50 text-brand-700 border border-brand-200 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider inline-block mb-2">
+            Simple 4-Step Process
+          </span>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+            How It Works
+          </h2>
+          <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-xl mx-auto">
+            A simple guide to our completely automated print-on-demand system & browser PDF toolkit.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {[
+            {
+              step: '01',
+              title: 'Upload Document',
+              desc: 'Select a PDF, Word, or Image file from your phone/PC, or send directly to our WhatsApp bot.',
+              icon: FileText,
+              color: 'text-brand-600 bg-brand-50 border-brand-200',
+            },
+            {
+              step: '02',
+              title: 'Configure & Edit',
+              desc: 'Choose paper size, B&W or Color, duplex state, or use our free PDF Tools to edit & merge pages.',
+              icon: Printer,
+              color: 'text-indigo-600 bg-indigo-50 border-indigo-200',
+            },
+            {
+              step: '03',
+              title: 'Secure Payment',
+              desc: 'Pay easily via Razorpay (UPI, GPay, PhonePe, Cards) or select Cash at counter.',
+              icon: ShieldCheck,
+              color: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+            },
+            {
+              step: '04',
+              title: 'Instant Auto-Print',
+              desc: 'Our shop agent automatically spools your document directly to laser printers. Zero wait time!',
+              icon: CheckCircle,
+              color: 'text-amber-600 bg-amber-50 border-amber-200',
+            },
+          ].map((item, i) => {
+            const StepIcon = item.icon;
+            return (
+              <div
+                key={i}
+                className="card-premium bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${item.color}`}>
+                      STEP {item.step}
+                    </span>
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                      <StepIcon size={20} />
+                    </div>
+                  </div>
+                  <h3 className="font-extrabold text-slate-900 text-sm mb-1.5 tracking-tight">
+                    {item.title}
+                  </h3>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    {item.desc}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* DUAL CONTENT BLOCKS */}
       <section className="max-w-5xl mx-auto px-4 pb-12 w-full grid md:grid-cols-2 gap-6">
@@ -718,6 +792,57 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* FREE PDF TOOLS GRID SECTION ON HOME PAGE */}
+      <section className="max-w-6xl mx-auto px-4 py-12 w-full border-t border-slate-200 mt-8">
+        <div className="text-center mb-8">
+          <span className="bg-brand-50 text-brand-700 border border-brand-200 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider inline-block mb-2">
+            100% Free Client-Side Tools
+          </span>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
+            Free PDF Utilities (No Upload Limits)
+          </h2>
+          <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-xl mx-auto">
+            Fast, private, browser-based PDF toolkit. Convert, merge, split, compress, watermark, and protect your PDFs directly on your device.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {PDF_TOOLS.map((tool) => {
+            const IconComponent = tool.icon;
+            return (
+              <Link
+                key={tool.id}
+                href={`/tools/${tool.id}`}
+                className="group card-premium bg-white p-4 rounded-2xl border border-slate-200 hover:border-brand-400 hover:shadow-lg transition-all duration-200 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${tool.badgeColor}`}>
+                      {tool.num}
+                    </span>
+                    <div className={`w-9 h-9 rounded-xl ${tool.iconBg} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                      <IconComponent size={18} />
+                    </div>
+                  </div>
+
+                  <h3 className={`text-xs font-extrabold ${tool.textColor} group-hover:text-brand-700 tracking-tight mb-1`}>
+                    {tool.title}
+                  </h3>
+                  <p className="text-slate-500 text-[11px] leading-snug">
+                    {tool.description}
+                  </p>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-400 group-hover:text-brand-600 transition-colors">
+                  <span>Use Tool</span>
+                  <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
       {/* FOOTER */}
       <footer className="bg-white border-t border-slate-200 mt-auto py-6">
         <div className="max-w-5xl mx-auto px-4 text-xs text-slate-400 flex justify-between items-center">
@@ -725,6 +850,7 @@ export default function LandingPage() {
           <div className="flex gap-4">
             <Link href="/privacy" className="hover:text-slate-600">Privacy Policy</Link>
             <Link href="/terms" className="hover:text-slate-600">Terms of Service</Link>
+            <Link href="/tools" className="hover:text-slate-600 font-semibold text-brand-600">PDF Tools</Link>
             <Link href="/admin/login" className="hover:text-slate-600 font-semibold text-brand-600">Admin Login</Link>
           </div>
         </div>

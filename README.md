@@ -46,6 +46,8 @@ To access the administrative panel:
 | `/how-it-works` | Description of the 4-step workflow |
 | `/contact` | Store location, maps link, contact details |
 | `/faq` | Helpful student print center questions |
+| `/tools` | **Free PDF Tools Suite** (16 browser-based PDF utilities: Merge, Split, Watermark, Compress, etc.) |
+| `/tools/[tool]` | Dedicated workspace for individual PDF tools (e.g. `/tools/merge-pdf`, `/tools/split-pdf`) |
 | `/privacy` | Privacy guidelines |
 | `/terms` | Print terms of service |
 

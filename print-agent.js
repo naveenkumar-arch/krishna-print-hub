@@ -353,18 +353,29 @@ function spoolToWindows(filePath, jobOptions, callback) {
         }
       });
     } else {
-      // FIX: NEVER call Set-DefaultPrinter — it changes the Windows default printer system-wide,
-      // causing any manual print jobs from the shop counter to hang, re-route, or get stuck.
-      // Use Out-Printer -Name which sends directly to the named device with NO system changes.
-      // Also use -NonInteractive so PowerShell never opens any UI window on the shop screen.
-      console.log(`🎯 [Spooler] SumatraPDF fallback or non-PDF file. Using Out-Printer.`);
+      const fileNameLower = filePath.toLowerCase();
+      const isBinary = fileNameLower.endsWith('.pdf') || fileNameLower.endsWith('.png') || 
+                       fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg') ||
+                       fileNameLower.endsWith('.bmp') || fileNameLower.endsWith('.webp');
+      
+      console.log(`🎯 [Spooler] SumatraPDF fallback or non-PDF file. Binary mode: ${isBinary}`);
       let printCmd;
-      if (targetPrinterName) {
-        console.log(`🎯 [Spooler] Targeting printer device directly: ${targetPrinterName}`);
-        printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer -Name '${targetPrinterName.replace(/'/g, "''")}'"`;
+      if (isBinary) {
+        if (targetPrinterName) {
+          console.log(`🎯 [Spooler] Targeting printer device via Start-Process PrintTo: ${targetPrinterName}`);
+          printCmd = `powershell -NonInteractive -Command "Start-Process -FilePath '${filePath.replace(/'/g, "''")}' -Verb PrintTo -ArgumentList '\"${targetPrinterName.replace(/'/g, "''")}\"'"`;
+        } else {
+          console.log(`🎯 [Spooler] Targeting system default printer via Start-Process Print...`);
+          printCmd = `powershell -NonInteractive -Command "Start-Process -FilePath '${filePath.replace(/'/g, "''")}' -Verb Print"`;
+        }
       } else {
-        console.log(`🎯 [Spooler] Targeting system default printer via Out-Printer...`);
-        printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer"`;
+        if (targetPrinterName) {
+          console.log(`🎯 [Spooler] Targeting printer device directly via Out-Printer: ${targetPrinterName}`);
+          printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer -Name '${targetPrinterName.replace(/'/g, "''")}'"`;
+        } else {
+          console.log(`🎯 [Spooler] Targeting system default printer via Out-Printer...`);
+          printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer"`;
+        }
       }
 
       console.log(`⚡ [Spooler] Executing Windows printer command...`);

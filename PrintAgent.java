@@ -1026,19 +1026,30 @@ public class PrintAgent {
 
     private static void executeWindowsVerbPrint(File ticketFile, String printerName) {
         try {
-            // FIX: NEVER call SetDefaultPrinter â€” that changes Windows default system-wide and
-            // causes manual prints from the counter to hang, re-route, or get stuck in the spooler.
-            // Instead, use Out-Printer with the explicit printer name, which sends directly
-            // to the target device without modifying any system-wide settings.
+            String fileNameLower = ticketFile.getName().toLowerCase();
+            boolean isBinary = fileNameLower.endsWith(".pdf") || fileNameLower.endsWith(".png") || 
+                               fileNameLower.endsWith(".jpg") || fileNameLower.endsWith(".jpeg") ||
+                               fileNameLower.endsWith(".bmp") || fileNameLower.endsWith(".webp");
             String fullCmd;
-            if (printerName != null && !printerName.trim().isEmpty()) {
-                System.out.println("Using direct Out-Printer spooling (no system default change): " + printerName);
-                // Get-Content | Out-Printer sends directly to named printer without opening any UI
-                fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer -Name '" + printerName.replace("'", "''") + "'";
+            if (isBinary) {
+                // FIX: Binary PDF/image files MUST use Start-Process -Verb PrintTo.
+                // Get-Content treats binary PDF streams as text, which corrupts the file and causes printer spool errors.
+                if (printerName != null && !printerName.trim().isEmpty()) {
+                    System.out.println("Using Start-Process PrintTo for binary file: " + printerName);
+                    fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb PrintTo -ArgumentList '\"" + printerName.replace("'", "''") + "\"'";
+                } else {
+                    System.out.println("Using Start-Process Print for binary file...");
+                    fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb Print";
+                }
             } else {
-                System.out.println("Using direct Out-Printer spooling to system default printer...");
-                // Without -Name, Out-Printer uses the default but does NOT permanently change it
-                fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer";
+                // Text receipt files (.txt) use Out-Printer
+                if (printerName != null && !printerName.trim().isEmpty()) {
+                    System.out.println("Using direct Out-Printer spooling for text file: " + printerName);
+                    fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer -Name '" + printerName.replace("'", "''") + "'";
+                } else {
+                    System.out.println("Using direct Out-Printer spooling for text file...");
+                    fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer";
+                }
             }
             
             ProcessBuilder pb = new ProcessBuilder("powershell", "-NonInteractive", "-Command", fullCmd);
@@ -1052,7 +1063,7 @@ public class PrintAgent {
             }
             p.waitFor();
         } catch (Exception e) {
-            System.err.println("Windows Out-Printer fallback failed: " + e.getMessage());
+            System.err.println("Windows fallback print failed: " + e.getMessage());
         }
     }
 

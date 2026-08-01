@@ -175,9 +175,10 @@ export default function AdminOrdersPage() {
     toast.error(`Order ${id} rejected.`);
   };
 
-  const handleReprint = (id: string) => {
-    updateOrderInDb(id, { status: 'queued' });
-    toast.success(`Order ${id} spooled back to queue.`);
+  const handleReprint = (order: any) => {
+    // FIX: Keep assignedPrinterId so the job reprints on the same printer
+    updateOrderInDb(order.id, { status: 'queued', assignedPrinterId: order.assignedPrinterId || '' });
+    toast.success(`Order ${order.id} re-queued for reprint.`);
   };
 
   const handleRefund = (id: string) => {
@@ -325,13 +326,19 @@ export default function AdminOrdersPage() {
                               <Edit2 size={14} />
                             </button>
                           )}
-                          {o.status === 'completed' && (
+                          {/* Reprint — only for today's completed orders */}
+                          {o.status === 'completed' && (() => {
+                            if (!o.createdAt) return false;
+                            const d = new Date(o.createdAt);
+                            const now = new Date();
+                            return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+                          })() && (
                             <button 
-                              onClick={() => handleReprint(o.id)}
+                              onClick={() => handleReprint(o)}
                               className="bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100/70 p-1.5 rounded-lg text-xs flex items-center gap-1 font-semibold"
-                              title="Reprint Job"
+                              title="Reprint Job (same-day only)"
                             >
-                              <RefreshCw size={12} /> Reprint
+                              <RotateCcw size={12} /> Reprint
                             </button>
                           )}
                           {o.status === 'paid' && (

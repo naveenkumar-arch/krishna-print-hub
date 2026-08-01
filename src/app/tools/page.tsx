@@ -15,9 +15,6 @@ import PDFDropzone from '@/components/pdf/PDFDropzone';
 import RecentFilesSection from '@/components/pdf/RecentFilesSection';
 import { PDF_TOOLS, ToolMeta } from '@/lib/pdfToolsData';
 
-export { PDF_TOOLS };
-export type { ToolMeta };
-
 export default function PDFToolsHubPage() {
   const router = useRouter();
   const [quickFiles, setQuickFiles] = useState<File[]>([]);

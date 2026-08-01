@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { 
   Printer, ArrowLeft, Search, Clock, CheckCircle, 
   AlertTriangle, Phone, FileText, ShoppingBag, 
-  PrinterCheck, HelpCircle 
+  HelpCircle 
 } from 'lucide-react';
 import { mockOrders } from '@/lib/mockData';
 import toast from 'react-hot-toast';

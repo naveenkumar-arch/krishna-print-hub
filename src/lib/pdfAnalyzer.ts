@@ -27,7 +27,7 @@ export function analyzePDFBuffer(buffer: Buffer): PDFAnalysisResult {
     }
 
     // 1. Page matches parsing
-    const pageMatches = [...text.matchAll(/\/Type\s*\/Page\b/g)];
+    const pageMatches = Array.from(text.matchAll(/\/Type\s*\/Page\b/g));
     const totalPages = pageMatches.length || 1;
 
     let blankPages = 0;
@@ -53,7 +53,7 @@ export function analyzePDFBuffer(buffer: Buffer): PDFAnalysisResult {
 
     // 2. Scan objects
     const objRegex = /(\d+)\s+(\d+)\s+obj([\s\S]*?)endobj/g;
-    const matches = [...text.matchAll(objRegex)];
+    const matches = Array.from(text.matchAll(objRegex));
 
     const pageBoxes: [number, number][] = [];
     const streams: Map<string, string> = new Map();

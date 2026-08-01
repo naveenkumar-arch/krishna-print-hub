@@ -23,6 +23,8 @@ public class PrintAgent {
     private static List<Map<String, Object>> remotePrinters = new ArrayList<>();
     private static String lastPingTime = "";
     private static boolean hasLoggedPrinters = false;
+    // FIX: Track in-progress job IDs to prevent double-printing across poll cycles
+    private static final Set<String> inProgressJobs = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     private static CustomPrintStream customOutStream;
 
@@ -202,12 +204,12 @@ public class PrintAgent {
                 con.setReadTimeout(5000);
                 int code = con.getResponseCode();
                 if (code == 200) {
-                    JOptionPane.showMessageDialog(frame, "✓ Connected successfully to Vercel Server!", "Connection Test", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(frame, "âœ“ Connected successfully to Vercel Server!", "Connection Test", JOptionPane.INFORMATION_MESSAGE);
                 } else {
-                    JOptionPane.showMessageDialog(frame, "✗ Server returned response code: " + code, "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(frame, "âœ— Server returned response code: " + code, "Connection Failed", JOptionPane.ERROR_MESSAGE);
                 }
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(frame, "✗ Could not reach server: " + ex.getMessage(), "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "âœ— Could not reach server: " + ex.getMessage(), "Connection Failed", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -236,13 +238,13 @@ public class PrintAgent {
                     writer.write("Spool test page dispatched successfully.\n");
                 }
                 printToWindowsDevice(tempFile, selectedPrn, null);
-                JOptionPane.showMessageDialog(frame, "✓ Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "âœ“ Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
                 
                 new Thread(() -> {
                     try { Thread.sleep(5000); tempFile.delete(); } catch(Exception ignored) {}
                 }).start();
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(frame, "✗ Spool failed: " + ex.getMessage(), "Printer Test", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "âœ— Spool failed: " + ex.getMessage(), "Printer Test", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -575,8 +577,22 @@ public class PrintAgent {
                     List<Map<String, String>> orders = parseOrders(respStr);
                     for (Map<String, String> order : orders) {
                         String status = order.get("status");
-                        if ("paid".equals(status) || "queued".equals(status)) {
-                            spoolJob(order);
+                        String orderId = order.get("id");
+                        // FIX: Skip jobs already being processed to prevent double-printing
+                        if (("paid".equals(status) || "queued".equals(status)) && !inProgressJobs.contains(orderId)) {
+                            inProgressJobs.add(orderId);
+                            // FIX: Run each print job on its own daemon thread â€” never block the polling loop
+                            final Map<String, String> jobCopy = order;
+                            Thread jobThread = new Thread(() -> {
+                                try {
+                                    spoolJob(jobCopy);
+                                } finally {
+                                    inProgressJobs.remove(orderId);
+                                }
+                            });
+                            jobThread.setDaemon(true);
+                            jobThread.setName("print-job-" + orderId);
+                            jobThread.start();
                         }
                     }
                 }
@@ -603,6 +619,12 @@ public class PrintAgent {
         System.out.println("Routing Job #" + orderId + " to targeted printer: " + targetPrinter);
 
         try {
+            // FIX: Check for cancel_requested before starting download â€” covers wrong-printer case
+            if (isCancelRequested(orderId)) {
+                System.out.println("[Abort] Job #" + orderId + " has cancel_requested status. Resetting to queued.");
+                updateOrderStatus(orderId, "queued");
+                return;
+            }
             // Check if we have a real file URL uploaded to the database
             if (fileUrl != null && !fileUrl.trim().isEmpty()) {
                 updateOrderStatus(orderId, "downloading");
@@ -619,9 +641,18 @@ public class PrintAgent {
                 updateOrderStatus(orderId, "printing");
                 System.out.println("Sending actual document (" + file + ") to Windows Print Spooler...");
                 
+                // FIX: Check again just before sending to printer â€” catches cancellations during download
+                if (isCancelRequested(orderId)) {
+                    System.out.println("[Abort] Job #" + orderId + " cancelled during download. Resetting to queued.");
+                    updateOrderStatus(orderId, "queued");
+                    downloadedFile.delete();
+                    return;
+                }
+                
                 printToWindowsDevice(downloadedFile, targetPrinter, order);
                 
-                Thread.sleep(15000);
+                // FIX: No longer block polling thread with Thread.sleep â€” mark completed immediately
+                // after SumatraPDF/spooler call returns (it is already synchronous via waitFor())
                 updateOrderStatus(orderId, "completed");
                 System.out.println("Job #" + orderId + " completed printing successfully.");
                 
@@ -641,7 +672,7 @@ public class PrintAgent {
                     writer.write("DOCUMENT: " + file + "\n");
                     writer.write("PAGES   : " + pages + " page(s)\n");
                     writer.write("COPIES  : " + copies + " copy(ies)\n");
-                    writer.write("CONFIG  : " + paperSize + " · " + colorMode.toUpperCase() + " · " + duplex.toUpperCase() + "\n");
+                    writer.write("CONFIG  : " + paperSize + " Â· " + colorMode.toUpperCase() + " Â· " + duplex.toUpperCase() + "\n");
                     writer.write("=========================================\n");
                     writer.write("Please collect your prints at the counter.\n");
                     writer.write("Thank you for printing with us!\n");
@@ -650,7 +681,7 @@ public class PrintAgent {
 
                 printToWindowsDevice(tempTicket, targetPrinter, order);
 
-                Thread.sleep(15000);
+                // FIX: No sleep needed â€” printToWindowsDevice is synchronous via waitFor()
                 updateOrderStatus(orderId, "completed");
                 System.out.println("Job #" + orderId + " completed printing (fallback ticket) successfully.");
                 
@@ -663,6 +694,35 @@ public class PrintAgent {
             updateOrderStatus(orderId, "error");
         }
     }
+
+    // FIX: Check if an order has been cancel_requested by the admin dashboard
+    private static boolean isCancelRequested(String orderId) {
+        try {
+            URL url = new URL(BASE_URL + "/api/orders");
+            HttpURLConnection con = (HttpURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+            con.setRequestProperty("Authorization", "Bearer " + AUTH_TOKEN);
+            con.setConnectTimeout(4000);
+            con.setReadTimeout(4000);
+            if (con.getResponseCode() == 200) {
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) response.append(line.trim());
+                    String respStr = response.toString();
+                    // Robust: find this order's id position, then check within 300 chars for its status
+                    String idMarker = "\"id\":\"" + orderId + "\"";
+                    int idPos = respStr.indexOf(idMarker);
+                    if (idPos >= 0) {
+                        String orderSlice = respStr.substring(idPos, Math.min(idPos + 300, respStr.length()));
+                        return orderSlice.contains("\"status\":\"cancel_requested\"");
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
 
     private static void downloadFile(String fileUrl, File destination) throws Exception {
         String fullUrl = fileUrl.startsWith("http") ? fileUrl : BASE_URL + fileUrl;
@@ -966,17 +1026,22 @@ public class PrintAgent {
 
     private static void executeWindowsVerbPrint(File ticketFile, String printerName) {
         try {
-            System.out.println("Using default Windows Verb Print for file spooling...");
-            String spoolCmd = "Start-Process -FilePath \"" + ticketFile.getAbsolutePath() + "\" -Verb Print";
+            // FIX: NEVER call SetDefaultPrinter â€” that changes Windows default system-wide and
+            // causes manual prints from the counter to hang, re-route, or get stuck in the spooler.
+            // Instead, use Out-Printer with the explicit printer name, which sends directly
+            // to the target device without modifying any system-wide settings.
             String fullCmd;
-            if (printerName != null && !printerName.trim().isEmpty() && !printerName.equalsIgnoreCase("HP LaserJet Pro")) {
-                String setPrinterCmd = "(Get-WmiObject -Class Win32_Printer | Where-Object { $_.Name -eq '" + printerName.replace("'", "''") + "' }).SetDefaultPrinter()";
-                fullCmd = setPrinterCmd + "; Start-Sleep -s 1; " + spoolCmd;
+            if (printerName != null && !printerName.trim().isEmpty()) {
+                System.out.println("Using direct Out-Printer spooling (no system default change): " + printerName);
+                // Get-Content | Out-Printer sends directly to named printer without opening any UI
+                fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer -Name '" + printerName.replace("'", "''") + "'";
             } else {
-                fullCmd = spoolCmd;
+                System.out.println("Using direct Out-Printer spooling to system default printer...");
+                // Without -Name, Out-Printer uses the default but does NOT permanently change it
+                fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer";
             }
             
-            ProcessBuilder pb = new ProcessBuilder("powershell", "-Command", fullCmd);
+            ProcessBuilder pb = new ProcessBuilder("powershell", "-NonInteractive", "-Command", fullCmd);
             pb.redirectErrorStream(true);
             Process p = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
@@ -987,7 +1052,7 @@ public class PrintAgent {
             }
             p.waitFor();
         } catch (Exception e) {
-            System.err.println("Windows Verb Print fallback failed: " + e.getMessage());
+            System.err.println("Windows Out-Printer fallback failed: " + e.getMessage());
         }
     }
 
@@ -1416,10 +1481,10 @@ public class PrintAgent {
         SwingUtilities.invokeLater(() -> {
             if (statusValLabel != null) {
                 if (online) {
-                    statusValLabel.setText("🟢 ONLINE / IDLE");
+                    statusValLabel.setText("ðŸŸ¢ ONLINE / IDLE");
                     statusValLabel.setForeground(new Color(22, 163, 74));
                 } else {
-                    statusValLabel.setText("🔴 OFFLINE: " + (error != null ? error : "Reconnecting..."));
+                    statusValLabel.setText("ðŸ”´ OFFLINE: " + (error != null ? error : "Reconnecting..."));
                     statusValLabel.setForeground(Color.RED);
                 }
             }
@@ -1429,3 +1494,4 @@ public class PrintAgent {
         });
     }
 }
+

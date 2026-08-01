@@ -17,6 +17,8 @@ const PORT = 4000;
 const POLL_INTERVAL = 4000; // Poll for jobs every 4 seconds
 const BACKEND_HOST = 'krishna-students-print-hub.vercel.app';
 let targetPrinterName = "";
+// FIX: Track in-progress job IDs to prevent double-print across poll cycles
+const inProgressJobs = new Set();
 
 console.log("====================================================");
 console.log("  KRISHNA STUDENTS PRINT HUB - AUTO SPOOL AGENT     ");
@@ -107,12 +109,29 @@ function fetchPendingJobs() {
       try {
         const data = JSON.parse(body);
         if (data && data.orders) {
+          // Handle cancel_requested: agent clears the job lock and resets it to queued
+          const cancelRequested = data.orders.filter(o => o.status === 'cancel_requested');
+          for (const job of cancelRequested) {
+            if (inProgressJobs.has(job.id)) {
+              console.log(`\n🛑 [Cancel] Job ${job.id} cancel_requested — aborting and re-queuing.`);
+              inProgressJobs.delete(job.id);
+            }
+            // Reset status to queued so it can be retried with a different printer
+            updateJobStatusOnServer(job.id, 'queued', () => {
+              console.log(`✅ [Cancel] Job ${job.id} reset to queued for retry.`);
+            });
+          }
+
           // Select jobs that are marked 'paid' or 'queued' but not printed yet
           const pending = data.orders.filter(o => o.status === 'paid' || o.status === 'queued');
           if (pending.length > 0) {
             const nextJob = pending[0];
-            console.log(`\n📦 [Job Spotted] Found pending paid order ${nextJob.id} from ${nextJob.customerName}`);
-            processSpoolJob(nextJob);
+            // FIX: Skip jobs already being processed to prevent double-printing
+            if (!inProgressJobs.has(nextJob.id)) {
+              inProgressJobs.add(nextJob.id);
+              console.log(`\n📦 [Job Spotted] Found pending paid order ${nextJob.id} from ${nextJob.customerName}`);
+              processSpoolJob(nextJob);
+            }
           }
         }
       } catch (e) {
@@ -153,11 +172,12 @@ function processSpoolJob(job) {
           return;
         }
         
-        spoolToWindows(spoolFile, (printErr) => {
-          // Keep printing status for 20 seconds, then mark completed
+        spoolToWindows(spoolFile, job, (printErr) => {
           setTimeout(() => {
             updateJobStatusOnServer(job.id, 'completed', () => {
               console.log(`✅ [Spooler] Order ${job.id} printed & finalized.`);
+              // FIX: Remove from in-progress set so job isn't re-tried if status update is slow
+              inProgressJobs.delete(job.id);
               try {
                 fs.unlinkSync(spoolFile);
               } catch(e) {}
@@ -186,10 +206,12 @@ Status:       PAID SECURELY VIA RAZORPAY
 `;
       fs.writeFileSync(spoolFile, receiptContent, 'utf-8');
       
-      spoolToWindows(spoolFile, (printErr) => {
+      spoolToWindows(spoolFile, job, (printErr) => {
         setTimeout(() => {
           updateJobStatusOnServer(job.id, 'completed', () => {
             console.log(`✅ [Spooler] Order ${job.id} printed & finalized (fallback ticket).`);
+            // FIX: Remove from in-progress set
+            inProgressJobs.delete(job.id);
             try {
               fs.unlinkSync(spoolFile);
             } catch(e) {}
@@ -260,7 +282,11 @@ function ensurePrinterUtility(callback) {
   download("https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe");
 }
 
-function spoolToWindows(filePath, callback) {
+function spoolToWindows(filePath, jobOptions, callback) {
+  if (typeof jobOptions === 'function') {
+    callback = jobOptions;
+    jobOptions = {};
+  }
   ensurePrinterUtility((err) => {
     const isPdf = filePath.toLowerCase().endsWith('.pdf');
     const helperExists = fs.existsSync(helperPath);
@@ -269,11 +295,45 @@ function spoolToWindows(filePath, callback) {
       let printArgs = [];
       if (targetPrinterName) {
         console.log(`🎯 [Spooler] Targeting printer device using SumatraPDF: ${targetPrinterName}`);
-        printArgs = ['-print-to', targetPrinterName, filePath];
+        printArgs = ['-print-to', targetPrinterName];
       } else {
         console.log(`🎯 [Spooler] Targeting system default printer using SumatraPDF...`);
-        printArgs = ['-print-to-default', filePath];
+        printArgs = ['-print-to-default'];
       }
+
+      // Build explicit print settings (monochrome/color, copies, duplex, paper size)
+      const settings = [];
+      const copies = Math.max(1, parseInt(jobOptions.copies) || 1);
+      settings.push(`${copies}x`);
+
+      const duplex = (jobOptions.duplex || '').toLowerCase();
+      if (duplex.includes('duplex') || duplex.includes('double') || duplex.includes('long')) {
+        settings.push('duplexlong');
+      } else if (duplex.includes('short')) {
+        settings.push('duplexshort');
+      } else {
+        settings.push('simplex');
+      }
+
+      const colorMode = (jobOptions.colorMode || '').toLowerCase();
+      if (colorMode.includes('color')) {
+        settings.push('color');
+      } else {
+        settings.push('monochrome');
+      }
+
+      const paperSize = (jobOptions.paperSize || 'A4').toUpperCase();
+      if (['A4', 'A3', 'LETTER', 'LEGAL', 'A5'].includes(paperSize)) {
+        settings.push(`paper=${paperSize}`);
+      }
+
+      if (settings.length > 0) {
+        const settingsStr = settings.join(',');
+        console.log(`⚙️ [Spooler] Applying print settings: ${settingsStr}`);
+        printArgs.push('-print-settings', settingsStr);
+      }
+
+      printArgs.push(filePath);
       
       console.log(`⚡ [Spooler] Executing SumatraPDF printer command...`);
       const spawn = require('child_process').spawn;
@@ -293,13 +353,18 @@ function spoolToWindows(filePath, callback) {
         }
       });
     } else {
-      console.log(`🎯 [Spooler] SumatraPDF fallback or non-PDF file. Using Verb Print.`);
-      let printCmd = `powershell -Command "Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+      // FIX: NEVER call Set-DefaultPrinter — it changes the Windows default printer system-wide,
+      // causing any manual print jobs from the shop counter to hang, re-route, or get stuck.
+      // Use Out-Printer -Name which sends directly to the named device with NO system changes.
+      // Also use -NonInteractive so PowerShell never opens any UI window on the shop screen.
+      console.log(`🎯 [Spooler] SumatraPDF fallback or non-PDF file. Using Out-Printer.`);
+      let printCmd;
       if (targetPrinterName) {
-        console.log(`🎯 [Spooler] Targeting printer device: ${targetPrinterName}`);
-        printCmd = `powershell -Command "Set-DefaultPrinter -Name '${targetPrinterName}'; Start-Process -FilePath '${filePath}' -Verb Print -PassThru"`;
+        console.log(`🎯 [Spooler] Targeting printer device directly: ${targetPrinterName}`);
+        printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer -Name '${targetPrinterName.replace(/'/g, "''")}'"`;
       } else {
-        console.log(`🎯 [Spooler] Targeting system default printer...`);
+        console.log(`🎯 [Spooler] Targeting system default printer via Out-Printer...`);
+        printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer"`;
       }
 
       console.log(`⚡ [Spooler] Executing Windows printer command...`);

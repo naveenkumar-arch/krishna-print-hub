@@ -23,7 +23,7 @@ export const fileToArrayBuffer = (file: File): Promise<ArrayBuffer> => {
  * Downloads a Uint8Array or Blob as a file in the browser
  */
 export const downloadBlob = (data: Uint8Array | Blob, filename: string, mimeType: string = 'application/pdf') => {
-  const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+  const blob = data instanceof Blob ? data : new Blob([data as unknown as BlobPart], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -252,7 +252,7 @@ export const pdfToImages = async (
     canvas.height = viewport.height;
 
     if (context) {
-      await page.render({ canvasContext: context, viewport }).promise;
+      await page.render({ canvasContext: context, viewport, canvas } as any).promise;
       const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png';
       const dataUrl = canvas.toDataURL(mimeType, 0.95);
 
@@ -509,7 +509,7 @@ export const protectPDF = async (file: File, userPassword: string, ownerPassword
   const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
 
   // Encrypt using pdf-lib permissions and passwords
-  pdfDoc.encrypt({
+  (pdfDoc as any).encrypt({
     userPassword: userPassword,
     ownerPassword: ownerPassword || userPassword,
     permissions: {

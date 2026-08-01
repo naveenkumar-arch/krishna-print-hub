@@ -35,12 +35,12 @@ export async function POST(request: Request) {
 
     // Update order status to paid / queued in JSON database
     if (orderId) {
-      const orders = db.getOrders();
-      const order = orders.find(o => o.id === orderId);
+      const orders = await db.getOrders();
+      const order = orders.find((o: any) => o.id === orderId);
       if (order) {
-        const rules = db.getRules();
+        const rules = await db.getRules();
         const nextStatus = order.pages > rules.autoApprovalPageLimit ? 'waiting_approval' : 'paid';
-        db.updateOrderStatus(orderId, nextStatus);
+        await db.updateOrderStatus(orderId, nextStatus);
         console.log(`[Verify Payment API] Order ${orderId} status successfully updated to ${nextStatus}.`);
       } else {
         console.warn(`[Verify Payment API] Order ID ${orderId} not found in database.`);

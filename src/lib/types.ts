@@ -1,4 +1,4 @@
-export type OrderStatus = 'pending' | 'paid' | 'failed' | 'queued' | 'printing' | 'completed' | 'cancelled' | 'waiting_approval' | 'waiting_cash';
+export type OrderStatus = 'pending' | 'paid' | 'failed' | 'queued' | 'printing' | 'completed' | 'cancelled' | 'waiting_approval' | 'waiting_cash' | 'cancel_requested' | 'downloading';
 export type PrintColorMode = 'bw' | 'color';
 export type PaperSize = 'A4' | 'A3' | 'Letter' | 'Legal' | 'A5' | 'B4';
 export type DuplexMode = 'simplex' | 'duplex';

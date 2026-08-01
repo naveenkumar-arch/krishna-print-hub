@@ -285,7 +285,7 @@ export default function ToolWorkspacePage() {
     toast.loading('Generating ZIP package...', { id: 'zip-task' });
     const items = resultFilesList.map((item) => ({
       name: item.name,
-      blob: item.bytes instanceof Blob ? item.bytes : new Blob([item.bytes]),
+      blob: item.bytes instanceof Blob ? item.bytes : new Blob([item.bytes as unknown as BlobPart]),
     }));
     const zipBlob = await createZipFromFiles(items);
     downloadBlob(zipBlob, `${selectedFiles[0]?.name || 'files'}_processed.zip`, 'application/zip');

@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     console.log(`[Razorpay Webhook] Received event: ${event}`);
 
     // Verify signature if webhook secret is configured
-    const razorConfig = db.getRazorpayConfig();
+    const razorConfig = await db.getRazorpayConfig();
     const signature = request.headers.get('x-razorpay-signature');
 
     if (razorConfig.webhookSecret && signature) {
@@ -42,12 +42,12 @@ export async function POST(request: Request) {
       console.log(`[Razorpay Webhook] Processing success for Order Code: ${orderId}`);
       
       // Update order status to paid (or queued based on approval page limit)
-      const orders = db.getOrders();
-      const order = orders.find(o => o.id === orderId);
+      const orders = await db.getOrders();
+      const order = orders.find((o: any) => o.id === orderId);
       if (order) {
-        const rules = db.getRules();
+        const rules = await db.getRules();
         const nextStatus = order.pages > rules.autoApprovalPageLimit ? 'waiting_approval' : 'paid';
-        db.updateOrderStatus(orderId, nextStatus);
+        await db.updateOrderStatus(orderId, nextStatus);
         console.log(`[Razorpay Webhook] Order ${orderId} status updated to ${nextStatus}.`);
       } else {
         console.warn(`[Razorpay Webhook] Order ID ${orderId} not found in database.`);

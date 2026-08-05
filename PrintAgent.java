@@ -886,9 +886,9 @@ public class PrintAgent {
                     return pName;
                 }
             }
-            return locals.get(0).split("\\|")[0];
+            throw new RuntimeException("No physical hardware printer connected. Only virtual software printers found (e.g. Microsoft Print to PDF).");
         }
-        return "HP LaserJet Pro";
+        throw new RuntimeException("No printers installed on this Windows PC. Please connect a printer.");
     }
 
     private static File getPrinterUtilityFile() {
@@ -915,6 +915,13 @@ public class PrintAgent {
     }
 
     private static void printToWindowsDevice(File ticketFile, String printerName, Map<String, String> orderParams) throws Exception {
+        if (printerName != null) {
+            String pLower = printerName.toLowerCase();
+            if (pLower.contains("microsoft print to pdf") || pLower.contains("fax") || pLower.contains("xps") || pLower.contains("onenote")) {
+                throw new IOException("Target printer '" + printerName + "' is a virtual printer. Please connect a real physical printer.");
+            }
+        }
+
         ensurePrinterUtility();
 
         File helperExe = getPrinterUtilityFile();
@@ -1015,8 +1022,9 @@ public class PrintAgent {
                 }
             }
             int exitCode = p.waitFor();
-            if (exitCode != 0) {
-                System.err.println("SumatraPDF returned exit code " + exitCode + ". Output: " + output.toString() + ". Executing Windows Print Verb fallback...");
+            String outStr = output.toString().toLowerCase();
+            if (exitCode != 0 || outStr.contains("error:") || outStr.contains("couldn't open file")) {
+                System.err.println("SumatraPDF error detected (exitCode=" + exitCode + "). Output: " + output.toString() + ". Executing Windows Print Verb fallback...");
                 executeWindowsVerbPrint(ticketFile, printerName);
             }
         } else {
@@ -1024,46 +1032,44 @@ public class PrintAgent {
         }
     }
 
-    private static void executeWindowsVerbPrint(File ticketFile, String printerName) {
-        try {
-            String fileNameLower = ticketFile.getName().toLowerCase();
-            boolean isBinary = fileNameLower.endsWith(".pdf") || fileNameLower.endsWith(".png") || 
-                               fileNameLower.endsWith(".jpg") || fileNameLower.endsWith(".jpeg") ||
-                               fileNameLower.endsWith(".bmp") || fileNameLower.endsWith(".webp");
-            String fullCmd;
-            if (isBinary) {
-                // FIX: Binary PDF/image files MUST use Start-Process -Verb PrintTo.
-                // Get-Content treats binary PDF streams as text, which corrupts the file and causes printer spool errors.
-                if (printerName != null && !printerName.trim().isEmpty()) {
-                    System.out.println("Using Start-Process PrintTo for binary file: " + printerName);
-                    fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb PrintTo -ArgumentList '\"" + printerName.replace("'", "''") + "\"'";
-                } else {
-                    System.out.println("Using Start-Process Print for binary file...");
-                    fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb Print";
-                }
+    private static void executeWindowsVerbPrint(File ticketFile, String printerName) throws Exception {
+        String fileNameLower = ticketFile.getName().toLowerCase();
+        boolean isBinary = fileNameLower.endsWith(".pdf") || fileNameLower.endsWith(".png") || 
+                           fileNameLower.endsWith(".jpg") || fileNameLower.endsWith(".jpeg") ||
+                           fileNameLower.endsWith(".bmp") || fileNameLower.endsWith(".webp");
+        String fullCmd;
+        if (isBinary) {
+            if (printerName != null && !printerName.trim().isEmpty()) {
+                System.out.println("Using Start-Process PrintTo for binary file: " + printerName);
+                fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb PrintTo -ArgumentList '\"" + printerName.replace("'", "''") + "\"'";
             } else {
-                // Text receipt files (.txt) use Out-Printer
-                if (printerName != null && !printerName.trim().isEmpty()) {
-                    System.out.println("Using direct Out-Printer spooling for text file: " + printerName);
-                    fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer -Name '" + printerName.replace("'", "''") + "'";
-                } else {
-                    System.out.println("Using direct Out-Printer spooling for text file...");
-                    fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer";
-                }
+                System.out.println("Using Start-Process Print for binary file...");
+                fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb Print";
             }
-            
-            ProcessBuilder pb = new ProcessBuilder("powershell", "-NonInteractive", "-Command", fullCmd);
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("PowerShell: " + line);
-                }
+        } else {
+            if (printerName != null && !printerName.trim().isEmpty()) {
+                System.out.println("Using direct Out-Printer spooling for text file: " + printerName);
+                fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer -Name '" + printerName.replace("'", "''") + "'";
+            } else {
+                System.out.println("Using direct Out-Printer spooling for text file...");
+                fullCmd = "Get-Content -Path '" + ticketFile.getAbsolutePath().replace("'", "''") + "' | Out-Printer";
             }
-            p.waitFor();
-        } catch (Exception e) {
-            System.err.println("Windows fallback print failed: " + e.getMessage());
+        }
+        
+        ProcessBuilder pb = new ProcessBuilder("powershell", "-NonInteractive", "-Command", fullCmd);
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        StringBuilder psOutput = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println("PowerShell: " + line);
+                psOutput.append(line).append("\n");
+            }
+        }
+        int exitCode = p.waitFor();
+        if (exitCode != 0 || psOutput.toString().toLowerCase().contains("error")) {
+            throw new IOException("Windows print spooler failed (exit code " + exitCode + "): " + psOutput.toString());
         }
     }
 

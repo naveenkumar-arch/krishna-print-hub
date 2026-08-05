@@ -765,14 +765,23 @@ public class PrintAgent {
             }
         }
 
-        if (status == 401 && targetUrl.contains("cloudinary.com/") && targetUrl.contains("/raw/upload/")) {
-            System.out.println("Cloudinary raw URL returned 401. Retrying via image resource endpoint...");
-            targetUrl = targetUrl.replace("/raw/upload/", "/image/upload/");
-            URL retryUrl = new URL(targetUrl.replace(" ", "%20").replace("(", "%28").replace(")", "%29"));
+        if (status == 401 && targetUrl.contains("cloudinary.com/")) {
+            System.out.println("Cloudinary URL returned 401. Retrying with fallback transformation / raw mode...");
+            String fallbackUrl = targetUrl;
+            if (fallbackUrl.contains("/image/upload/")) {
+                fallbackUrl = fallbackUrl.replace("/image/upload/", "/raw/upload/");
+            } else if (fallbackUrl.contains("/raw/upload/")) {
+                fallbackUrl = fallbackUrl.replace("/raw/upload/", "/image/upload/");
+            }
+            URL retryUrl = new URL(fallbackUrl.replace(" ", "%20").replace("(", "%28").replace(")", "%29"));
             con = (HttpURLConnection) retryUrl.openConnection();
             con.setRequestMethod("GET");
             con.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36");
-            status = con.getResponseCode();
+            int retryStatus = con.getResponseCode();
+            if (retryStatus == 200) {
+                status = 200;
+                targetUrl = fallbackUrl;
+            }
         }
 
         if (status != 200) {

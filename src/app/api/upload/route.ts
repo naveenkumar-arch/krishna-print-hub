@@ -86,8 +86,7 @@ export async function POST(request: Request) {
 
         const uploadResult = await cloudinary.uploader.upload(dataUri, {
           folder: 'krishna-print-hub',
-          resource_type: isPDF ? 'image' : 'raw',
-          format: isPDF ? 'pdf' : undefined,
+          resource_type: 'raw',
           access_mode: 'public',
           public_id: safeFileName,
           overwrite: false,

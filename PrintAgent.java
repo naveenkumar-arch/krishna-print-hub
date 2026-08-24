@@ -817,7 +817,30 @@ public class PrintAgent {
     }
 
     private static String determineTargetPrinter(String paperSize, String colorMode, String assignedPrinterId) {
-        // 1. If an exact assigned printer ID was chosen by admin, find its name
+        List<String> locals = getWindowsPrinters();
+        Set<String> localNames = new HashSet<>();
+        String localPhysicalFallback = null;
+        String localAnyFallback = null;
+
+        for (String raw : locals) {
+            String pName = raw.split("\\|")[0].trim();
+            if (!pName.isEmpty()) {
+                localNames.add(pName.toLowerCase());
+                if (localAnyFallback == null) {
+                    localAnyFallback = pName;
+                }
+                String pLower = pName.toLowerCase();
+                if (localPhysicalFallback == null && 
+                    !pLower.contains("microsoft print to pdf") && 
+                    !pLower.contains("fax") && 
+                    !pLower.contains("xps") && 
+                    !pLower.contains("onenote")) {
+                    localPhysicalFallback = pName;
+                }
+            }
+        }
+
+        // 1. If an exact assigned printer ID was chosen by admin, verify it exists on this PC
         if (assignedPrinterId != null && !assignedPrinterId.trim().isEmpty()) {
             try {
                 URL url = new URL(BASE_URL + "/api/config");
@@ -836,7 +859,10 @@ public class PrintAgent {
                             List<Map<String, Object>> printers = parsePrintersConfig(configStr);
                             for (Map<String, Object> p : printers) {
                                 if (assignedPrinterId.equals(p.get("id"))) {
-                                    return (String) p.get("name");
+                                    String pName = (String) p.get("name");
+                                    if (pName != null && localNames.contains(pName.toLowerCase())) {
+                                        return pName;
+                                    }
                                 }
                             }
                         }
@@ -845,7 +871,7 @@ public class PrintAgent {
             } catch (Exception ignored) {}
         }
 
-        // 2. Capabilities-based routing: match color vs B&W and paper size
+        // 2. Capabilities-based routing: match color vs B&W and paper size ONLY among locally installed printers
         try {
             URL url = new URL(BASE_URL + "/api/config");
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
@@ -861,13 +887,22 @@ public class PrintAgent {
                     String configStr = response.toString();
                     
                     if (configStr.contains("\"printers\":[")) {
-                        List<Map<String, Object>> printers = parsePrintersConfig(configStr);
-                        if (!printers.isEmpty()) {
+                        List<Map<String, Object>> rawPrinters = parsePrintersConfig(configStr);
+                        // Filter out ghost printers from previous PCs - ONLY keep printers installed on this local Windows PC
+                        List<Map<String, Object>> localMatchingPrinters = new ArrayList<>();
+                        for (Map<String, Object> p : rawPrinters) {
+                            String pName = (String) p.get("name");
+                            if (pName != null && localNames.contains(pName.toLowerCase())) {
+                                localMatchingPrinters.add(p);
+                            }
+                        }
+
+                        if (!localMatchingPrinters.isEmpty()) {
                             boolean isColorJob = "color".equalsIgnoreCase(colorMode) || "colour".equalsIgnoreCase(colorMode);
                             boolean isA3Job = "A3".equalsIgnoreCase(paperSize);
 
                             // Priority 1: Match BOTH A3 and Color requirements if needed
-                            for (Map<String, Object> p : printers) {
+                            for (Map<String, Object> p : localMatchingPrinters) {
                                 boolean okColor = !isColorJob || Boolean.TRUE.equals(p.get("supportsColor"));
                                 boolean okA3 = !isA3Job || Boolean.TRUE.equals(p.get("supportsA3"));
                                 if (isColorJob && isA3Job && okColor && okA3) {
@@ -877,16 +912,16 @@ public class PrintAgent {
 
                             // Priority 2: If Color job, select printer with supportsColor == true
                             if (isColorJob) {
-                                for (Map<String, Object> p : printers) {
+                                for (Map<String, Object> p : localMatchingPrinters) {
                                     if (Boolean.TRUE.equals(p.get("supportsColor"))) {
                                         return (String) p.get("name");
                                     }
                                 }
                             }
 
-                            // Priority 3: If B&W job, prefer dedicated monochrome printer (supportsColor == false)
+                            // Priority 3: If B&W job, prefer dedicated monochrome printer
                             if (!isColorJob) {
-                                for (Map<String, Object> p : printers) {
+                                for (Map<String, Object> p : localMatchingPrinters) {
                                     if (Boolean.FALSE.equals(p.get("supportsColor"))) {
                                         return (String) p.get("name");
                                     }
@@ -894,30 +929,29 @@ public class PrintAgent {
                             }
 
                             // Priority 4: Default printer
-                            for (Map<String, Object> p : printers) {
+                            for (Map<String, Object> p : localMatchingPrinters) {
                                 if (Boolean.TRUE.equals(p.get("isDefault"))) {
                                     return (String) p.get("name");
                                 }
                             }
-                            return (String) printers.get(0).get("name");
+                            return (String) localMatchingPrinters.get(0).get("name");
                         }
                     }
                 }
             }
         } catch (Exception ignored) {}
 
-        List<String> locals = getWindowsPrinters();
-        if (!locals.isEmpty()) {
-            for (String raw : locals) {
-                String pName = raw.split("\\|")[0];
-                String pLower = pName.toLowerCase();
-                if (!pLower.contains("microsoft print to pdf") && !pLower.contains("fax") && !pLower.contains("xps") && !pLower.contains("onenote")) {
-                    return pName;
-                }
-            }
-            throw new RuntimeException("No physical hardware printer connected. Only virtual software printers found (e.g. Microsoft Print to PDF).");
+        // 3. Fallback to physical printer detected directly on Windows
+        if (localPhysicalFallback != null) {
+            return localPhysicalFallback;
         }
-        throw new RuntimeException("No printers installed on this Windows PC. Please connect a printer.");
+
+        // 4. Fallback to any local printer (including virtual/PDF for testing)
+        if (localAnyFallback != null) {
+            return localAnyFallback;
+        }
+
+        throw new RuntimeException("No printers installed on this Windows PC. Please connect or install a printer.");
     }
 
     private static File getPrinterUtilityFile() {

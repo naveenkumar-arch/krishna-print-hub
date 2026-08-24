@@ -311,17 +311,42 @@ export default function AdminPrintersPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-black text-slate-900 tracking-tight">Printer Configuration</h1>
           <p className="text-slate-500 text-xs mt-0.5">Connect local desktop printers, monitor statuses, or dispatch tests</p>
         </div>
-        <button 
-          onClick={() => setShowAddModal(true)}
-          className="btn-primary text-xs py-2 px-4"
-        >
-          <Plus size={14} /> Add Printer
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={async () => {
+              if (!confirm("This will clear all printers not currently detected on this PC. Continue?")) return;
+              try {
+                // Keep only the default printer or reset to empty so the active agent registers fresh
+                const res = await fetch('/api/config', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ printers: printers.filter(p => p.isDefault || p.name.includes("L3150")) })
+                });
+                if (res.ok) {
+                  toast.success("Ghost printers cleaned! Active agent will sync current printers.");
+                  setTimeout(() => window.location.reload(), 800);
+                }
+              } catch (e) {
+                toast.error("Failed to clean printers.");
+              }
+            }}
+            className="btn-secondary text-xs py-2 px-3 bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 font-bold"
+            title="Remove ghost printers from old disconnected PCs"
+          >
+            🧹 Clean Ghost Printers
+          </button>
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="btn-primary text-xs py-2 px-4"
+          >
+            <Plus size={14} /> Add Printer
+          </button>
+        </div>
       </div>
 
       {/* Local Agent Connection Status Banner */}

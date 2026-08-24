@@ -221,6 +221,7 @@ export default function AdminOrdersPage() {
           <option value="queued">Queued</option>
           <option value="printing">Printing Now</option>
           <option value="completed">Completed / Ready</option>
+          <option value="error">❌ Error / Failed</option>
           <option value="cancelled">Cancelled / Refunded</option>
           <option value="waiting_approval">Waiting Approval</option>
         </select>
@@ -288,7 +289,8 @@ export default function AdminOrdersPage() {
                           o.status === 'printing' ? 'badge-printing' :
                           o.status === 'waiting_approval' ? 'badge-waiting' : 
                           o.status === 'waiting_cash' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                          o.status === 'paid' ? 'badge-paid' : 'badge-cancelled'
+                          o.status === 'paid' ? 'badge-paid' : 
+                          o.status === 'error' ? 'bg-rose-100 text-rose-800 border border-rose-300 font-bold' : 'badge-cancelled'
                         }`}>
                           {o.status.toUpperCase()}
                         </span>
@@ -316,12 +318,23 @@ export default function AdminOrdersPage() {
                             </>
                           )}
 
-                          {/* Edit Settings Actions (before printing starts) */}
-                          {(o.status === 'pending' || o.status === 'waiting_approval' || o.status === 'waiting_cash' || o.status === 'paid' || o.status === 'queued') && (
+                          {/* Retry failed print jobs */}
+                          {o.status === 'error' && (
+                            <button 
+                              onClick={() => handleReprint(o)}
+                              className="bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 p-1.5 rounded-lg text-xs flex items-center gap-1 font-bold"
+                              title="Retry Printing this Order"
+                            >
+                              <RotateCcw size={13} /> Retry Print
+                            </button>
+                          )}
+
+                          {/* Edit Settings Actions */}
+                          {(o.status === 'pending' || o.status === 'waiting_approval' || o.status === 'waiting_cash' || o.status === 'paid' || o.status === 'queued' || o.status === 'error') && (
                             <button 
                               onClick={() => handleOpenEdit(o)}
                               className="bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100/70 p-1.5 rounded-lg text-xs"
-                              title="Edit Print Settings"
+                              title="Edit Print Settings / Assign Printer"
                             >
                               <Edit2 size={14} />
                             </button>

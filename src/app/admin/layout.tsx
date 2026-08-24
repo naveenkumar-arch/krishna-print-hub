@@ -55,7 +55,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!authenticated) return;
 
     const checkUpdates = () => {
-      // 1. Fetch Shop details from backend REST API
+      // 1. Fetch Shop details and Printers from backend REST API
       fetch('/api/config')
         .then(res => res.json())
         .then(data => {
@@ -70,6 +70,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           if (data.printRules) {
             localStorage.setItem('printRules', JSON.stringify(data.printRules));
           }
+          if (data.hasOwnProperty('autoPrintEnabled')) {
+            setAutoPrintBadge(Boolean(data.autoPrintEnabled));
+          }
+          if (data.printers && data.printers.length > 0) {
+            const def = data.printers.find((p: any) => p.isDefault) || data.printers[0];
+            setDefaultPrinter(def.name);
+          }
         })
         .catch(() => {
           // Fallback to local storage if API is offline
@@ -82,31 +89,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             } catch (e) {}
           }
         });
-
-      // 2. Active default printer name and AutoPrint configurations
-      const savedAuto = localStorage.getItem('autoPrintEnabled');
-      if (savedAuto) {
-        setAutoPrintBadge(savedAuto === 'true');
-      }
-
-      const savedCustom = localStorage.getItem('customPrinters');
-      if (savedCustom) {
-        try {
-          const parsedPrinters = JSON.parse(savedCustom);
-          const def = parsedPrinters.find((p: any) => p.isDefault);
-          if (def) {
-            setDefaultPrinter(def.name);
-          } else if (parsedPrinters.length > 0) {
-            setDefaultPrinter(parsedPrinters[0].name);
-          } else {
-            setDefaultPrinter('No printers connected');
-          }
-        } catch (e) {
-          setDefaultPrinter('HP LaserJet Pro');
-        }
-      } else {
-        setDefaultPrinter('HP LaserJet Pro');
-      }
 
       // 3. Spool metrics (Pending approval, Printing items count)
       fetch('/api/orders')

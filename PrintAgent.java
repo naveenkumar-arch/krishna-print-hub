@@ -817,6 +817,7 @@ public class PrintAgent {
     }
 
     private static String determineTargetPrinter(String paperSize, String colorMode, String assignedPrinterId) {
+        // 1. If an exact assigned printer ID was chosen by admin, find its name
         if (assignedPrinterId != null && !assignedPrinterId.trim().isEmpty()) {
             try {
                 URL url = new URL(BASE_URL + "/api/config");
@@ -829,9 +830,7 @@ public class PrintAgent {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
                         StringBuilder response = new StringBuilder();
                         String line;
-                        while ((line = br.readLine()) != null) {
-                            response.append(line.trim());
-                        }
+                        while ((line = br.readLine()) != null) response.append(line.trim());
                         String configStr = response.toString();
                         if (configStr.contains("\"printers\":[")) {
                             List<Map<String, Object>> printers = parsePrintersConfig(configStr);
@@ -846,6 +845,7 @@ public class PrintAgent {
             } catch (Exception ignored) {}
         }
 
+        // 2. Capabilities-based routing: match color vs B&W and paper size
         try {
             URL url = new URL(BASE_URL + "/api/config");
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
@@ -857,23 +857,43 @@ public class PrintAgent {
                 try (BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
                     StringBuilder response = new StringBuilder();
                     String line;
-                    while ((line = br.readLine()) != null) {
-                        response.append(line.trim());
-                    }
+                    while ((line = br.readLine()) != null) response.append(line.trim());
                     String configStr = response.toString();
                     
                     if (configStr.contains("\"printers\":[")) {
                         List<Map<String, Object>> printers = parsePrintersConfig(configStr);
                         if (!printers.isEmpty()) {
+                            boolean isColorJob = "color".equalsIgnoreCase(colorMode) || "colour".equalsIgnoreCase(colorMode);
+                            boolean isA3Job = "A3".equalsIgnoreCase(paperSize);
+
+                            // Priority 1: Match BOTH A3 and Color requirements if needed
                             for (Map<String, Object> p : printers) {
-                                boolean matchesA3 = "A3".equalsIgnoreCase(paperSize) && Boolean.TRUE.equals(p.get("supportsA3"));
-                                boolean matchesColor = "color".equalsIgnoreCase(colorMode) && Boolean.TRUE.equals(p.get("supportsColor"));
-                                
-                                if (matchesA3 || matchesColor) {
+                                boolean okColor = !isColorJob || Boolean.TRUE.equals(p.get("supportsColor"));
+                                boolean okA3 = !isA3Job || Boolean.TRUE.equals(p.get("supportsA3"));
+                                if (isColorJob && isA3Job && okColor && okA3) {
                                     return (String) p.get("name");
                                 }
                             }
-                            
+
+                            // Priority 2: If Color job, select printer with supportsColor == true
+                            if (isColorJob) {
+                                for (Map<String, Object> p : printers) {
+                                    if (Boolean.TRUE.equals(p.get("supportsColor"))) {
+                                        return (String) p.get("name");
+                                    }
+                                }
+                            }
+
+                            // Priority 3: If B&W job, prefer dedicated monochrome printer (supportsColor == false)
+                            if (!isColorJob) {
+                                for (Map<String, Object> p : printers) {
+                                    if (Boolean.FALSE.equals(p.get("supportsColor"))) {
+                                        return (String) p.get("name");
+                                    }
+                                }
+                            }
+
+                            // Priority 4: Default printer
                             for (Map<String, Object> p : printers) {
                                 if (Boolean.TRUE.equals(p.get("isDefault"))) {
                                     return (String) p.get("name");
@@ -906,21 +926,44 @@ public class PrintAgent {
             String jarPath = PrintAgent.class.getProtectionDomain().getCodeSource().getLocation().getPath();
             String decodedPath = java.net.URLDecoder.decode(jarPath, "UTF-8");
             File jarDir = new File(decodedPath).getParentFile();
-            File util = new File(jarDir, "SumatraPDF.exe");
-            if (util.exists() && util.length() > 2000000) {
-                return util;
+            if (jarDir != null) {
+                File util = new File(jarDir, "SumatraPDF.exe");
+                if (util.exists() && util.length() > 1000000) {
+                    return util;
+                }
             }
         } catch (Exception ignored) {}
 
         // 2. Check current working directory
         File utilCurrent = new File("SumatraPDF.exe");
-        if (utilCurrent.exists() && utilCurrent.length() > 2000000) {
+        if (utilCurrent.exists() && utilCurrent.length() > 1000000) {
             return utilCurrent;
         }
 
-        // 3. Check user home folder
-        String homeDir = System.getProperty("user.home");
-        return new File(homeDir + File.separator + "SumatraPDF.exe");
+        // 3. Check system and user locations
+        String[] candidateDirs = {
+            System.getProperty("user.dir"),
+            System.getProperty("user.home"),
+            System.getenv("LOCALAPPDATA"),
+            System.getenv("APPDATA"),
+            System.getenv("ProgramFiles"),
+            System.getenv("ProgramFiles(x86)"),
+            "C:\\"
+        };
+        for (String dir : candidateDirs) {
+            if (dir != null && !dir.trim().isEmpty()) {
+                File candidate = new File(dir, "SumatraPDF.exe");
+                if (candidate.exists() && candidate.length() > 1000000) {
+                    return candidate;
+                }
+                File subDirCandidate = new File(dir + File.separator + "SumatraPDF", "SumatraPDF.exe");
+                if (subDirCandidate.exists() && subDirCandidate.length() > 1000000) {
+                    return subDirCandidate;
+                }
+            }
+        }
+
+        return new File(System.getProperty("user.home") + File.separator + "SumatraPDF.exe");
     }
 
     private static void printToWindowsDevice(File ticketFile, String printerName, Map<String, String> orderParams) throws Exception {
@@ -944,8 +987,8 @@ public class PrintAgent {
                                          fileNameLower.endsWith(".webp") || 
                                          fileNameLower.endsWith(".bmp");
 
-        if (isPrintableWithSumatra && helperExe.exists()) {
-            System.out.println("Using SumatraPDF utility for printing document/image silently...");
+        if (isPrintableWithSumatra && helperExe.exists() && helperExe.length() > 1000000) {
+            System.out.println("Using SumatraPDF utility for printing document silently...");
             List<String> cmd = new ArrayList<>();
             cmd.add(helperExe.getAbsolutePath());
             if (printerName != null && !printerName.trim().isEmpty()) {
@@ -955,10 +998,13 @@ public class PrintAgent {
                 cmd.add("-print-to-default");
             }
 
-            // Build SumatraPDF print settings to explicitly override printer driver defaults
+            // Always add -silent to prevent hanging dialogs
+            cmd.add("-silent");
+
+            // Build SumatraPDF print settings
             List<String> settingsList = new ArrayList<>();
             if (orderParams != null) {
-                // 1. Copies: ALWAYS pass "1x", "2x", "3x" so printer driver defaults (e.g. 2 copies) are overridden
+                // 1. Copies
                 String copies = orderParams.get("copies");
                 int numCopies = 1;
                 if (copies != null && !copies.trim().isEmpty()) {
@@ -968,7 +1014,7 @@ public class PrintAgent {
                 }
                 settingsList.add(numCopies + "x");
 
-                // 2. Duplex (Double-sided printing): ALWAYS pass duplexlong or simplex
+                // 2. Duplex (Double-sided printing)
                 String duplex = orderParams.get("duplex");
                 String dLower = duplex != null ? duplex.trim().toLowerCase() : "";
                 if (dLower.contains("duplex") || dLower.contains("double") || dLower.equals("long") || dLower.equals("duplexlong")) {
@@ -979,10 +1025,10 @@ public class PrintAgent {
                     settingsList.add("simplex");
                 }
 
-                // 3. Color Mode: ALWAYS pass monochrome or color
+                // 3. Color Mode (Strict monochrome vs color)
                 String colorMode = orderParams.get("colorMode");
                 String cLower = colorMode != null ? colorMode.trim().toLowerCase() : "";
-                if (cLower.contains("color")) {
+                if ("color".equals(cLower) || cLower.contains("colour")) {
                     settingsList.add("color");
                 } else {
                     settingsList.add("monochrome");
@@ -1007,6 +1053,11 @@ public class PrintAgent {
                 } else {
                     settingsList.add("portrait");
                 }
+            } else {
+                settingsList.add("1x");
+                settingsList.add("monochrome");
+                settingsList.add("paper=A4");
+                settingsList.add("simplex");
             }
 
             if (!settingsList.isEmpty()) {
@@ -1033,10 +1084,13 @@ public class PrintAgent {
             int exitCode = p.waitFor();
             String outStr = output.toString().toLowerCase();
             if (exitCode != 0 || outStr.contains("error:") || outStr.contains("couldn't open file")) {
-                System.err.println("SumatraPDF error detected (exitCode=" + exitCode + "). Output: " + output.toString() + ". Executing Windows Print Verb fallback...");
-                executeWindowsVerbPrint(ticketFile, printerName);
+                throw new IOException("SumatraPDF failed with exit code " + exitCode + ". Output: " + output.toString());
             }
         } else {
+            // For PDF files: NEVER use Out-Printer or Start-Process -Verb PrintTo as it prints raw binary bytecode!
+            if (fileNameLower.endsWith(".pdf")) {
+                throw new IOException("SumatraPDF utility not ready or corrupted. Raw PDF byte streaming blocked to prevent printing unknown symbols/gibberish. Please place SumatraPDF.exe in the agent folder.");
+            }
             executeWindowsVerbPrint(ticketFile, printerName);
         }
     }
@@ -1046,13 +1100,18 @@ public class PrintAgent {
         boolean isBinary = fileNameLower.endsWith(".pdf") || fileNameLower.endsWith(".png") || 
                            fileNameLower.endsWith(".jpg") || fileNameLower.endsWith(".jpeg") ||
                            fileNameLower.endsWith(".bmp") || fileNameLower.endsWith(".webp");
+        
+        if (fileNameLower.endsWith(".pdf")) {
+            throw new IOException("Cannot print raw PDF file through Windows shell verb. SumatraPDF engine is required.");
+        }
+        
         String fullCmd;
         if (isBinary) {
             if (printerName != null && !printerName.trim().isEmpty()) {
-                System.out.println("Using Start-Process PrintTo for binary file: " + printerName);
+                System.out.println("Using Start-Process PrintTo for image file: " + printerName);
                 fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb PrintTo -ArgumentList '\"" + printerName.replace("'", "''") + "\"'";
             } else {
-                System.out.println("Using Start-Process Print for binary file...");
+                System.out.println("Using Start-Process Print for image file...");
                 fullCmd = "Start-Process -FilePath '" + ticketFile.getAbsolutePath().replace("'", "''") + "' -Verb Print";
             }
         } else {
@@ -1084,8 +1143,20 @@ public class PrintAgent {
 
     private static void ensurePrinterUtility() {
         File util = getPrinterUtilityFile();
-        if (util.exists() && util.length() > 2000000) {
+        if (util.exists() && util.length() > 1000000) {
             return;
+        }
+
+        // Check if there is a local SumatraPDF.exe in the current working directory to copy
+        File localSumatra = new File("SumatraPDF.exe");
+        if (localSumatra.exists() && localSumatra.length() > 1000000) {
+            try {
+                if (!util.getAbsolutePath().equals(localSumatra.getAbsolutePath())) {
+                    java.nio.file.Files.copy(localSumatra.toPath(), util.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    System.out.println("Copied local SumatraPDF.exe to: " + util.getAbsolutePath());
+                    return;
+                }
+            } catch (Exception ignored) {}
         }
         
         System.out.println("Extracting SumatraPDF printing utility from JAR resources...");
@@ -1105,33 +1176,47 @@ public class PrintAgent {
         } catch (Exception e) {
             System.err.println("Failed to extract SumatraPDF resource: " + e.getMessage());
             
-            // Fallback: Try downloading from raw GitHub URL
+            // Fallback: Try downloading from official release URL
             System.out.println("Downloading SumatraPDF printing helper utility as fallback...");
-            String targetUrl = "https://raw.githubusercontent.com/naveenkumar-arch/krishna-print-hub/main/SumatraPDF.exe";
-            HttpURLConnection conn = null;
-            int status = -1;
-            try {
-                URL url = new URL(targetUrl);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(20000);
-                status = conn.getResponseCode();
-                if (status == 200) {
-                    try (InputStream downloadIn = conn.getInputStream();
-                         FileOutputStream downloadOut = new FileOutputStream(util)) {
-                        byte[] downloadBuffer = new byte[4096];
-                        int downloadBytesRead;
-                        while ((downloadBytesRead = downloadIn.read(downloadBuffer)) != -1) {
-                            downloadOut.write(downloadBuffer, 0, downloadBytesRead);
+            String[] downloadUrls = {
+                "https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.exe",
+                "https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe",
+                "https://raw.githubusercontent.com/naveenkumar-arch/krishna-print-hub/main/SumatraPDF.exe"
+            };
+            
+            for (String targetUrl : downloadUrls) {
+                try {
+                    URL url = new URL(targetUrl);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(15000);
+                    conn.setReadTimeout(25000);
+                    conn.setInstanceFollowRedirects(true);
+                    int status = conn.getResponseCode();
+                    if (status == 301 || status == 302 || status == 307 || status == 308) {
+                        String newUrl = conn.getHeaderField("Location");
+                        conn.disconnect();
+                        conn = (HttpURLConnection) new URL(newUrl).openConnection();
+                        conn.setRequestMethod("GET");
+                        status = conn.getResponseCode();
+                    }
+                    if (status == 200) {
+                        try (InputStream downloadIn = conn.getInputStream();
+                             FileOutputStream downloadOut = new FileOutputStream(util)) {
+                            byte[] downloadBuffer = new byte[4096];
+                            int downloadBytesRead;
+                            while ((downloadBytesRead = downloadIn.read(downloadBuffer)) != -1) {
+                                downloadOut.write(downloadBuffer, 0, downloadBytesRead);
+                            }
+                        }
+                        if (util.exists() && util.length() > 1000000) {
+                            System.out.println("SumatraPDF downloaded successfully to: " + util.getAbsolutePath());
+                            break;
                         }
                     }
-                    System.out.println("SumatraPDF downloaded successfully to: " + util.getAbsolutePath());
-                } else {
-                    System.err.println("Failed to download fallback SumatraPDF. Status: " + status);
+                } catch (Exception err) {
+                    System.err.println("Failed to download from " + targetUrl + ": " + err.getMessage());
                 }
-            } catch (Exception err) {
-                System.err.println("Failed to download fallback SumatraPDF: " + err.getMessage());
             }
         }
     }

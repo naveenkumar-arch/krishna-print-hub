@@ -74,11 +74,13 @@ function pollForPrintJobs() {
             // Auto-print is disabled, skip polling orders
             return;
           }
-          // Fetch default targeted printer name
+          // Fetch default targeted printer name & cache printer list
           if (configData.printers && configData.printers.length > 0) {
+            cachedPrintersConfig = configData.printers;
             const def = configData.printers.find(p => p.isDefault);
-            targetPrinterName = def ? def.name : "";
+            targetPrinterName = def ? def.name : configData.printers[0].name;
           } else {
+            cachedPrintersConfig = [];
             targetPrinterName = "";
           }
         }
@@ -223,45 +225,135 @@ Status:       PAID SECURELY VIA RAZORPAY
 }
 
 function downloadDoc(fileUrl, destPath, callback) {
-  let fullUrl = fileUrl.startsWith('http') ? fileUrl : `https://${BACKEND_HOST}${fileUrl}`;
-  const client = fullUrl.startsWith('https') ? https : http;
-  
-  client.get(fullUrl, (res) => {
-    if (res.statusCode !== 200) {
-      return callback(new Error(`Server returned status code ${res.statusCode}`));
-    }
-    
-    const fileStream = fs.createWriteStream(destPath);
-    res.pipe(fileStream);
-    
-    fileStream.on('finish', () => {
-      fileStream.close();
-      callback(null);
+  let targetUrl = fileUrl.startsWith('http') ? fileUrl : `https://${BACKEND_HOST}${fileUrl}`;
+  if (targetUrl.includes('tmpfiles.org/') && !targetUrl.includes('tmpfiles.org/dl/')) {
+    targetUrl = targetUrl.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+  }
+
+  const fetchUrl = (urlToFetch, redirectCount = 0) => {
+    if (redirectCount > 5) return callback(new Error("Too many redirects"));
+    const client = urlToFetch.startsWith('https') ? https : http;
+    const req = client.get(urlToFetch, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+        return fetchUrl(res.headers.location, redirectCount + 1);
+      }
+      if (res.statusCode === 401 && urlToFetch.includes('cloudinary.com/')) {
+        let fallbackUrl = urlToFetch;
+        if (fallbackUrl.includes('/raw/upload/')) {
+          fallbackUrl = fallbackUrl.replace('/raw/upload/', '/image/upload/');
+        } else if (fallbackUrl.includes('/image/upload/')) {
+          fallbackUrl = fallbackUrl.replace('/image/upload/', '/raw/upload/');
+        }
+        if (fallbackUrl !== urlToFetch) {
+          return fetchUrl(fallbackUrl, redirectCount + 1);
+        }
+      }
+      if (res.statusCode !== 200) {
+        return callback(new Error(`Server returned status code ${res.statusCode}`));
+      }
+
+      const fileStream = fs.createWriteStream(destPath);
+      res.pipe(fileStream);
+      fileStream.on('finish', () => {
+        fileStream.close();
+        callback(null);
+      });
     });
-  }).on('error', (err) => {
-    callback(err);
-  });
+    req.on('error', (err) => callback(err));
+  };
+
+  fetchUrl(targetUrl);
 }
 
-const helperPath = path.join(process.env.USERPROFILE || process.env.HOMEPATH || process.env.HOME || 'C:\\', 'SumatraPDF.exe');
+let cachedPrintersConfig = [];
+
+function determinePrinterForJob(job) {
+  if (!cachedPrintersConfig || cachedPrintersConfig.length === 0) {
+    return targetPrinterName || "";
+  }
+  // 1. Check assignedPrinterId
+  if (job && job.assignedPrinterId) {
+    const assigned = cachedPrintersConfig.find(p => p.id === job.assignedPrinterId);
+    if (assigned) return assigned.name;
+  }
+  const colorMode = (job && job.colorMode || '').toLowerCase();
+  const isColor = colorMode === 'color' || colorMode.includes('colour');
+  const paperSize = (job && job.paperSize || '').toUpperCase();
+  const isA3 = paperSize === 'A3';
+
+  // 2. Both Color & A3
+  if (isColor && isA3) {
+    const pMatch = cachedPrintersConfig.find(p => p.supportsColor && p.supportsA3);
+    if (pMatch) return pMatch.name;
+  }
+  // 3. Color job
+  if (isColor) {
+    const pColor = cachedPrintersConfig.find(p => p.supportsColor);
+    if (pColor) return pColor.name;
+  }
+  // 4. B&W job: prefer dedicated monochrome printer
+  if (!isColor) {
+    const pMono = cachedPrintersConfig.find(p => p.supportsColor === false);
+    if (pMono) return pMono.name;
+  }
+  // 5. Default printer
+  const def = cachedPrintersConfig.find(p => p.isDefault);
+  if (def) return def.name;
+
+  return cachedPrintersConfig[0]?.name || targetPrinterName || "";
+}
+
+function getSumatraPath() {
+  const candidatePaths = [
+    path.join(__dirname, 'SumatraPDF.exe'),
+    path.join(process.cwd(), 'SumatraPDF.exe'),
+    path.join(process.env.USERPROFILE || process.env.HOME || 'C:\\', 'SumatraPDF.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'SumatraPDF', 'SumatraPDF.exe'),
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'SumatraPDF', 'SumatraPDF.exe'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'SumatraPDF', 'SumatraPDF.exe')
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const stats = fs.statSync(p);
+        if (stats.size > 1000000) {
+          return p;
+        }
+      } catch (e) {}
+    }
+  }
+  return path.join(process.env.USERPROFILE || process.env.HOME || 'C:\\', 'SumatraPDF.exe');
+}
 
 function ensurePrinterUtility(callback) {
-  if (fs.existsSync(helperPath)) {
+  const existingPath = getSumatraPath();
+  if (fs.existsSync(existingPath)) {
     try {
-      const stats = fs.statSync(helperPath);
-      if (stats.size > 2000000) {
-        return callback(null);
+      const stats = fs.statSync(existingPath);
+      if (stats.size > 1000000) {
+        return callback(null, existingPath);
       }
     } catch (e) {}
   }
   
+  // Check if we have a local file in __dirname to copy
+  const localFile = path.join(__dirname, 'SumatraPDF.exe');
+  if (fs.existsSync(localFile) && fs.statSync(localFile).size > 1000000) {
+    try {
+      fs.copyFileSync(localFile, existingPath);
+      return callback(null, existingPath);
+    } catch(e) {
+      return callback(null, localFile);
+    }
+  }
+
   console.log("📥 [Spooler] Downloading SumatraPDF printing helper utility...");
-  const file = fs.createWriteStream(helperPath);
+  const file = fs.createWriteStream(existingPath);
   
   const download = (url) => {
     https.get(url, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
-        // Follow redirect
         return download(res.headers.location);
       }
       if (res.statusCode !== 200) {
@@ -270,16 +362,16 @@ function ensurePrinterUtility(callback) {
       res.pipe(file);
       file.on('finish', () => {
         file.close();
-        console.log(`🟢 [Spooler] SumatraPDF downloaded to: ${helperPath}`);
-        callback(null);
+        console.log(`🟢 [Spooler] SumatraPDF downloaded to: ${existingPath}`);
+        callback(null, existingPath);
       });
     }).on('error', (err) => {
-      fs.unlink(helperPath, () => {});
+      fs.unlink(existingPath, () => {});
       callback(err);
     });
   };
   
-  download("https://github.com/sumatrapdfreader/sumatrapdf/releases/download/3.5.2/SumatraPDF-3.5.2-32.exe");
+  download("https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.exe");
 }
 
 function spoolToWindows(filePath, jobOptions, callback) {
@@ -287,19 +379,23 @@ function spoolToWindows(filePath, jobOptions, callback) {
     callback = jobOptions;
     jobOptions = {};
   }
-  ensurePrinterUtility((err) => {
+  ensurePrinterUtility((err, activeHelperPath) => {
     const isPdf = filePath.toLowerCase().endsWith('.pdf');
-    const helperExists = fs.existsSync(helperPath);
+    const helperExe = activeHelperPath || getSumatraPath();
+    const helperExists = fs.existsSync(helperExe) && fs.statSync(helperExe).size > 1000000;
+    const assignedTargetPrinter = determinePrinterForJob(jobOptions);
 
     if (isPdf && helperExists) {
       let printArgs = [];
-      if (targetPrinterName) {
-        console.log(`🎯 [Spooler] Targeting printer device using SumatraPDF: ${targetPrinterName}`);
-        printArgs = ['-print-to', targetPrinterName];
+      if (assignedTargetPrinter) {
+        console.log(`🎯 [Spooler] Targeting printer device using SumatraPDF: ${assignedTargetPrinter}`);
+        printArgs = ['-print-to', assignedTargetPrinter];
       } else {
         console.log(`🎯 [Spooler] Targeting system default printer using SumatraPDF...`);
         printArgs = ['-print-to-default'];
       }
+
+      printArgs.push('-silent');
 
       // Build explicit print settings (monochrome/color, copies, duplex, paper size)
       const settings = [];
@@ -316,7 +412,7 @@ function spoolToWindows(filePath, jobOptions, callback) {
       }
 
       const colorMode = (jobOptions.colorMode || '').toLowerCase();
-      if (colorMode.includes('color')) {
+      if (colorMode === 'color' || colorMode.includes('colour')) {
         settings.push('color');
       } else {
         settings.push('monochrome');
@@ -337,7 +433,7 @@ function spoolToWindows(filePath, jobOptions, callback) {
       
       console.log(`⚡ [Spooler] Executing SumatraPDF printer command...`);
       const spawn = require('child_process').spawn;
-      const child = spawn(helperPath, printArgs);
+      const child = spawn(helperExe, printArgs);
       
       let outData = '';
       child.stdout.on('data', (data) => outData += data);
@@ -353,29 +449,21 @@ function spoolToWindows(filePath, jobOptions, callback) {
         }
       });
     } else {
-      const fileNameLower = filePath.toLowerCase();
-      const isBinary = fileNameLower.endsWith('.pdf') || fileNameLower.endsWith('.png') || 
-                       fileNameLower.endsWith('.jpg') || fileNameLower.endsWith('.jpeg') ||
-                       fileNameLower.endsWith('.bmp') || fileNameLower.endsWith('.webp');
-      
-      console.log(`🎯 [Spooler] SumatraPDF fallback or non-PDF file. Binary mode: ${isBinary}`);
+      // For PDF files: DO NOT call Out-Printer or Start-Process -Verb PrintTo
+      if (isPdf) {
+        const errMsg = "SumatraPDF engine missing or inaccessible. Raw PDF byte streaming blocked to prevent garbled printout.";
+        console.error(`❌ [Spooler] ${errMsg}`);
+        return callback(new Error(errMsg));
+      }
+
+      console.log(`🎯 [Spooler] Spooling text ticket file...`);
       let printCmd;
-      if (isBinary) {
-        if (targetPrinterName) {
-          console.log(`🎯 [Spooler] Targeting printer device via Start-Process PrintTo: ${targetPrinterName}`);
-          printCmd = `powershell -NonInteractive -Command "Start-Process -FilePath '${filePath.replace(/'/g, "''")}' -Verb PrintTo -ArgumentList '\"${targetPrinterName.replace(/'/g, "''")}\"'"`;
-        } else {
-          console.log(`🎯 [Spooler] Targeting system default printer via Start-Process Print...`);
-          printCmd = `powershell -NonInteractive -Command "Start-Process -FilePath '${filePath.replace(/'/g, "''")}' -Verb Print"`;
-        }
+      if (assignedTargetPrinter) {
+        console.log(`🎯 [Spooler] Targeting printer device directly via Out-Printer: ${assignedTargetPrinter}`);
+        printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer -Name '${assignedTargetPrinter.replace(/'/g, "''")}'"`;
       } else {
-        if (targetPrinterName) {
-          console.log(`🎯 [Spooler] Targeting printer device directly via Out-Printer: ${targetPrinterName}`);
-          printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer -Name '${targetPrinterName.replace(/'/g, "''")}'"`;
-        } else {
-          console.log(`🎯 [Spooler] Targeting system default printer via Out-Printer...`);
-          printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer"`;
-        }
+        console.log(`🎯 [Spooler] Targeting system default printer via Out-Printer...`);
+        printCmd = `powershell -NonInteractive -Command "Get-Content -Path '${filePath.replace(/'/g, "''")}'  | Out-Printer"`;
       }
 
       console.log(`⚡ [Spooler] Executing Windows printer command...`);

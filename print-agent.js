@@ -15,7 +15,31 @@ const path = require('path');
 
 const PORT = 4000;
 const POLL_INTERVAL = 4000; // Poll for jobs every 4 seconds
-const BACKEND_HOST = 'krishna-students-print-hub.vercel.app';
+let BACKEND_URL = process.env.BACKEND_URL || 'https://krishna-students-print-hub.vercel.app';
+let AUTH_TOKEN = 'KP-DEMO-TOKEN-9988';
+
+try {
+  const configPath = path.join(process.env.USERPROFILE || process.env.HOME || '', 'config.properties');
+  if (fs.existsSync(configPath)) {
+    const content = fs.readFileSync(configPath, 'utf-8');
+    const urlMatch = content.match(/site_url\s*=\s*(.+)/);
+    if (urlMatch && urlMatch[1]) {
+      BACKEND_URL = urlMatch[1].trim();
+    }
+    const tokenMatch = content.match(/(?:connection_key|auth_token)\s*=\s*(.+)/);
+    if (tokenMatch && tokenMatch[1]) {
+      AUTH_TOKEN = tokenMatch[1].trim();
+    }
+  }
+} catch (e) {}
+
+let parsedBackend;
+try {
+  parsedBackend = new URL(BACKEND_URL);
+} catch (e) {
+  parsedBackend = new URL('https://krishna-students-print-hub.vercel.app');
+}
+
 let targetPrinterName = "";
 // FIX: Track in-progress job IDs to prevent double-print across poll cycles
 const inProgressJobs = new Set();
@@ -24,6 +48,7 @@ console.log("====================================================");
 console.log("  KRISHNA STUDENTS PRINT HUB - AUTO SPOOL AGENT     ");
 console.log("====================================================");
 console.log("Starting local agent on port: " + PORT);
+console.log("Backend Target URL: " + parsedBackend.origin);
 
 function getLocalPrinters(callback) {
   const psCommand = `powershell -Command "Get-Printer | Select-Object Name, PrinterStatus, JobCount | ConvertTo-Json"`;
@@ -53,97 +78,97 @@ function getLocalPrinters(callback) {
   });
 }
 
-// Spooler Polling logic
-function pollForPrintJobs() {
-  // Query backend configuration first to check if auto-print is toggled ON
-  const configOptions = {
-    hostname: BACKEND_HOST,
-    port: 443,
-    path: '/api/config',
-    method: 'GET'
+function makeBackendRequest(pathname, method = 'GET', postData = null, callback) {
+  const isHttps = parsedBackend.protocol === 'https:';
+  const client = isHttps ? https : http;
+  const defaultPort = isHttps ? 443 : 80;
+  const port = parsedBackend.port ? parseInt(parsedBackend.port) : defaultPort;
+
+  const headers = {
+    'Authorization': `Bearer ${AUTH_TOKEN}`
+  };
+  if (postData) {
+    headers['Content-Type'] = 'application/json';
+    headers['Content-Length'] = Buffer.byteLength(postData);
+  }
+
+  const options = {
+    hostname: parsedBackend.hostname,
+    port: port,
+    path: pathname,
+    method: method,
+    headers: headers
   };
 
-  const configReq = https.get(configOptions, (configRes) => {
-    let configBody = '';
-    configRes.on('data', (chunk) => configBody += chunk);
-    configRes.on('end', () => {
+  const req = client.request(options, (res) => {
+    let body = '';
+    res.on('data', (chunk) => body += chunk);
+    res.on('end', () => {
       try {
-        const configData = JSON.parse(configBody);
-        if (configData) {
-          if (configData.autoPrintEnabled === false) {
-            // Auto-print is disabled, skip polling orders
-            return;
-          }
-          // Fetch default targeted printer name & cache printer list
-          if (configData.printers && configData.printers.length > 0) {
-            cachedPrintersConfig = configData.printers;
-            const def = configData.printers.find(p => p.isDefault);
-            targetPrinterName = def ? def.name : configData.printers[0].name;
-          } else {
-            cachedPrintersConfig = [];
-            targetPrinterName = "";
-          }
-        }
-        fetchPendingJobs();
+        const json = JSON.parse(body);
+        callback(null, json, res.statusCode);
       } catch (e) {
-        fetchPendingJobs();
+        callback(e, body, res.statusCode);
       }
     });
   });
 
-  configReq.on('error', () => {
+  req.on('error', (err) => {
+    callback(err);
+  });
+
+  if (postData) {
+    req.write(postData);
+  }
+  req.end();
+}
+
+// Spooler Polling logic
+function pollForPrintJobs() {
+  makeBackendRequest('/api/config', 'GET', null, (err, configData) => {
+    if (!err && configData) {
+      if (configData.autoPrintEnabled === false) {
+        return;
+      }
+      if (configData.printers && configData.printers.length > 0) {
+        cachedPrintersConfig = configData.printers;
+        const def = configData.printers.find(p => p.isDefault);
+        targetPrinterName = def ? def.name : configData.printers[0].name;
+      } else {
+        cachedPrintersConfig = [];
+        targetPrinterName = "";
+      }
+    }
     fetchPendingJobs();
   });
 }
 
 function fetchPendingJobs() {
-  const options = {
-    hostname: BACKEND_HOST,
-    port: 443,
-    path: '/api/orders?agent=true',
-    method: 'GET'
-  };
+  makeBackendRequest('/api/orders?agent=true', 'GET', null, (err, data) => {
+    if (err || !data || !data.orders) return;
 
-  const req = https.get(options, (res) => {
-    let body = '';
-    res.on('data', (chunk) => body += chunk);
-    res.on('end', () => {
-      try {
-        const data = JSON.parse(body);
-        if (data && data.orders) {
-          // Handle cancel_requested: agent clears the job lock and resets it to queued
-          const cancelRequested = data.orders.filter(o => o.status === 'cancel_requested');
-          for (const job of cancelRequested) {
-            if (inProgressJobs.has(job.id)) {
-              console.log(`\n🛑 [Cancel] Job ${job.id} cancel_requested — aborting and re-queuing.`);
-              inProgressJobs.delete(job.id);
-            }
-            // Reset status to queued so it can be retried with a different printer
-            updateJobStatusOnServer(job.id, 'queued', () => {
-              console.log(`✅ [Cancel] Job ${job.id} reset to queued for retry.`);
-            });
-          }
-
-          // Select jobs that are marked 'paid' or 'queued' but not printed yet
-          const pending = data.orders.filter(o => o.status === 'paid' || o.status === 'queued');
-          if (pending.length > 0) {
-            const nextJob = pending[0];
-            // FIX: Skip jobs already being processed to prevent double-printing
-            if (!inProgressJobs.has(nextJob.id)) {
-              inProgressJobs.add(nextJob.id);
-              console.log(`\n📦 [Job Spotted] Found pending paid order ${nextJob.id} from ${nextJob.customerName}`);
-              processSpoolJob(nextJob);
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore parse errors
+    // Handle cancel_requested: agent clears the job lock and resets it to queued
+    const cancelRequested = data.orders.filter(o => o.status === 'cancel_requested');
+    for (const job of cancelRequested) {
+      if (inProgressJobs.has(job.id)) {
+        console.log(`\n🛑 [Cancel] Job ${job.id} cancel_requested — aborting and re-queuing.`);
+        inProgressJobs.delete(job.id);
       }
-    });
-  });
+      updateJobStatusOnServer(job.id, 'queued', () => {
+        console.log(`✅ [Cancel] Job ${job.id} reset to queued for retry.`);
+      });
+    }
 
-  req.on('error', (e) => {
-    // Silent fail if network is offline
+    // Select jobs that are marked 'paid' or 'queued' but not printed yet
+    const pending = data.orders.filter(o => o.status === 'paid' || o.status === 'queued');
+    if (pending.length > 0) {
+      const nextJob = pending[0];
+      if (!inProgressJobs.has(nextJob.id)) {
+        inProgressJobs.add(nextJob.id);
+        console.log(`\n📦 [Job Spotted] Found pending paid order ${nextJob.id} from ${nextJob.customerName}`);
+        processSpoolJob(nextJob);
+      }
+    }
   });
 }
 
@@ -225,7 +250,7 @@ Status:       PAID SECURELY VIA RAZORPAY
 }
 
 function downloadDoc(fileUrl, destPath, callback) {
-  let targetUrl = fileUrl.startsWith('http') ? fileUrl : `https://${BACKEND_HOST}${fileUrl}`;
+  let targetUrl = fileUrl.startsWith('http') ? fileUrl : `${parsedBackend.origin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
   if (targetUrl.includes('tmpfiles.org/') && !targetUrl.includes('tmpfiles.org/dl/')) {
     targetUrl = targetUrl.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
   }
@@ -482,25 +507,9 @@ function spoolToWindows(filePath, jobOptions, callback) {
 
 function updateJobStatusOnServer(id, status, callback) {
   const payload = JSON.stringify({ id, status });
-  const options = {
-    hostname: BACKEND_HOST,
-    port: 443,
-    path: '/api/orders',
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload)
-    }
-  };
-
-  const req = https.request(options, (res) => {
-    res.on('data', () => {});
-    res.on('end', () => callback(null));
+  makeBackendRequest('/api/orders', 'PUT', payload, (err) => {
+    callback(err);
   });
-
-  req.on('error', (e) => callback(e));
-  req.write(payload);
-  req.end();
 }
 
 // Create CORS-enabled HTTP status server for frontend dashboard links

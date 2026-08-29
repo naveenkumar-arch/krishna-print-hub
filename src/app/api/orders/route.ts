@@ -163,24 +163,26 @@ export async function POST(request: Request) {
     
     const newOrder: Order = {
       id: orderId,
-      customerName: customerName || "WhatsApp Customer",
-      customerPhone,
-      fileName: fileName || "document.pdf",
-      fileSize: fileSize || 1.2,
-      fileUrl: fileUrl || '',
-      pages: pages || 1,
-      copies: copies || 1,
-      paperSize: paperSize || 'A4',
-      colorMode: colorMode || 'bw',
-      duplex: duplex || 'simplex',
-      orientation: orientation || 'portrait',
+      customerName: safeName,
+      customerPhone: safePhone,
+      fileName: safeFileName,
+      fileSize: safeFileSize,
+      fileUrl: typeof fileUrl === 'string' ? fileUrl : '',
+      pages: safePages,
+      copies: safeCopies,
+      paperSize: safePaperSize,
+      colorMode: safeColorMode,
+      duplex: safeDuplex,
+      orientation: safeOrientation,
       amount: finalAmount,
       status: initialStatus,
-      source: source || 'web',
+      source: typeof source === 'string' ? source : 'web',
       paymentMethod: payMethod,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      pickupCode: "KP" + Math.floor(1000 + Math.random() * 9000)
+      pickupCode: "KP" + Math.floor(1000 + Math.random() * 9000),
+      isPaid: false,
+      couponCode: safeCoupon || undefined
     };
 
     let paymentLinkUrl = "";
@@ -196,7 +198,7 @@ export async function POST(request: Request) {
         const origin = request.headers.get('origin') || `https://${request.headers.get('host')}`;
 
         // Clean phone number for Razorpay
-        let contactPhone = customerPhone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+        let contactPhone = safePhone.replace(/\s+/g, '').replace(/[^\d+]/g, '');
         if (!contactPhone.startsWith('+') && !contactPhone.startsWith('91')) {
           contactPhone = `+91${contactPhone}`;
         }

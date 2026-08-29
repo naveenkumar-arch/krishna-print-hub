@@ -216,9 +216,17 @@ export default function UploadPage() {
         })
       });
 
-      const data = await response.json();
-      if (!data.success) {
-        toast.error(data.error || "Failed to create order on server.");
+      let data: any = {};
+      try {
+        const text = await response.text();
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        data = { error: `Server error (${response.status}: ${response.statusText || 'Unexpected server response'})` };
+      }
+
+      if (!response.ok || !data.success) {
+        const errorMsg = data.error || `Order creation failed with status ${response.status}`;
+        toast.error(errorMsg);
         setUploading(false);
         return;
       }
@@ -344,7 +352,8 @@ export default function UploadPage() {
       }
     } catch (err: any) {
       console.error("Checkout process failed:", err);
-      toast.error("Checkout transaction failed. Network error.");
+      const detailedError = err?.message || (typeof err === 'string' ? err : 'Connection lost. Please try again.');
+      toast.error(`Checkout error: ${detailedError}`);
       setUploading(false);
     }
   };

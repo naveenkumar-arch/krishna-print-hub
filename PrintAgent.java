@@ -43,21 +43,14 @@ public class PrintAgent {
         // Start PDF printing helper utility download in the background
         new Thread(() -> ensurePrinterUtility()).start();
 
-        // 1. Read existing config properties if saved
+        // 1. Read existing config properties if saved, or initialize defaults
         readConfig();
 
-        // 2. If no config file is found, launch the wizard setup panel
-        String configPath = System.getProperty("user.home") + File.separator + "config.properties";
-        File configFile = new File(configPath);
-        if (!configFile.exists()) {
-            SwingUtilities.invokeLater(() -> showSetupWizard());
-        } else {
-            // Config loaded, show live dashboard and run silently in system tray
-            SwingUtilities.invokeLater(() -> showStatusDashboard());
-            initSystemTray();
-            startLocalServer();
-            startPollingLoop();
-        }
+        // 2. Start services and connect immediately
+        SwingUtilities.invokeLater(() -> showStatusDashboard());
+        initSystemTray();
+        startLocalServer();
+        startPollingLoop();
     }
 
     private static void readConfig() {
@@ -68,13 +61,18 @@ public class PrintAgent {
             try (FileInputStream fis = new FileInputStream(configFile)) {
                 prop.load(fis);
                 BASE_URL = prop.getProperty("site_url", BASE_URL).trim();
-                AUTH_TOKEN = prop.getProperty("connection_key", prop.getProperty("auth_token", ""));
+                String token = prop.getProperty("connection_key", prop.getProperty("auth_token", AUTH_TOKEN));
+                if (token != null && !token.trim().isEmpty()) {
+                    AUTH_TOKEN = token.trim();
+                }
                 DEFAULT_PRINTER = prop.getProperty("default_printer", "");
                 AUTO_START_ENABLED = Boolean.parseBoolean(prop.getProperty("autostart", "true"));
                 System.out.println("Using Config URL: " + BASE_URL);
             } catch (IOException e) {
                 System.err.println("Could not parse config.properties file: " + e.getMessage());
             }
+        } else {
+            saveProperties();
         }
     }
 
@@ -725,7 +723,9 @@ public class PrintAgent {
 
 
     private static void downloadFile(String fileUrl, File destination) throws Exception {
-        String fullUrl = fileUrl.startsWith("http") ? fileUrl : BASE_URL + fileUrl;
+        String base = BASE_URL;
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String fullUrl = fileUrl.startsWith("http") ? fileUrl : base + (fileUrl.startsWith("/") ? "" : "/") + fileUrl;
         
         // Auto-fix tmpfiles.org URLs to direct download subpath (/dl/)
         if (fullUrl.contains("tmpfiles.org/") && !fullUrl.contains("tmpfiles.org/dl/")) {
@@ -736,7 +736,7 @@ public class PrintAgent {
         int status = -1;
         String targetUrl = fullUrl;
         
-        // Loop up to 5 times for HTTP redirects (e.g. S3 / tmpfiles.org buckets)
+        // Loop up to 5 times for HTTP redirects
         for (int i = 0; i < 5; i++) {
             if (targetUrl.contains("tmpfiles.org/") && !targetUrl.contains("tmpfiles.org/dl/")) {
                 targetUrl = targetUrl.replace("tmpfiles.org/", "tmpfiles.org/dl/");
@@ -748,7 +748,7 @@ public class PrintAgent {
             con = (HttpURLConnection) url.openConnection();
             con.setRequestMethod("GET");
             con.setConnectTimeout(10000);
-            con.setReadTimeout(15000);
+            con.setReadTimeout(20000);
             con.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             
             // Only add connection authentication header if it's pointing to our own backend
@@ -765,13 +765,16 @@ public class PrintAgent {
             }
         }
 
+        // Handle Cloudinary 401 retry: try stripping .pdf or switching raw/image
         if (status == 401 && targetUrl.contains("cloudinary.com/")) {
-            System.out.println("Cloudinary URL returned 401. Retrying with fallback transformation / raw mode...");
+            System.out.println("Cloudinary URL returned 401. Retrying with clean URL without extension...");
             String fallbackUrl = targetUrl;
-            if (fallbackUrl.contains("/image/upload/")) {
-                fallbackUrl = fallbackUrl.replace("/image/upload/", "/raw/upload/");
+            if (fallbackUrl.toLowerCase().endsWith(".pdf")) {
+                fallbackUrl = fallbackUrl.substring(0, fallbackUrl.length() - 4);
             } else if (fallbackUrl.contains("/raw/upload/")) {
                 fallbackUrl = fallbackUrl.replace("/raw/upload/", "/image/upload/");
+            } else if (fallbackUrl.contains("/image/upload/")) {
+                fallbackUrl = fallbackUrl.replace("/image/upload/", "/raw/upload/");
             }
             URL retryUrl = new URL(fallbackUrl.replace(" ", "%20").replace("(", "%28").replace(")", "%29"));
             con = (HttpURLConnection) retryUrl.openConnection();
@@ -790,7 +793,7 @@ public class PrintAgent {
 
         try (InputStream in = con.getInputStream();
              FileOutputStream out = new FileOutputStream(destination)) {
-            byte[] buffer = new byte[4096];
+            byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
@@ -1004,7 +1007,7 @@ public class PrintAgent {
         if (printerName != null) {
             String pLower = printerName.toLowerCase();
             if (pLower.contains("microsoft print to pdf") || pLower.contains("fax") || pLower.contains("xps") || pLower.contains("onenote")) {
-                throw new IOException("Target printer '" + printerName + "' is a virtual printer. Please connect a real physical printer.");
+                System.out.println("[Notice] Target printer '" + printerName + "' is a virtual printer. Spooling job silently...");
             }
         }
 

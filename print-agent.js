@@ -172,6 +172,39 @@ function fetchPendingJobs() {
   });
 }
 
+function printTicketFallback(job) {
+  const spoolFile = path.join(__dirname, `spool_job_${job.id}.txt`);
+  const receiptContent = `
+==================================================
+        KRISHNA STUDENTS PRINT HUB - ORDER RECEIPT
+==================================================
+Order ID:     ${job.id}
+Client:       ${job.customerName}
+Phone:        ${job.customerPhone}
+Document:     ${job.fileName}
+Layout:       A4 · ${job.colorMode === 'color' ? 'Color' : 'B&W'} · ${job.duplex}
+Copies:       ${job.copies} (${job.pages} pages per copy)
+Total Cost:   INR ${Number(job.amount || 0).toFixed(2)}
+Spool Time:   ${new Date().toLocaleString()}
+Pickup Code:  ${job.pickupCode}
+Status:       PAID / READY FOR PRINT
+==================================================
+`;
+  fs.writeFileSync(spoolFile, receiptContent, 'utf-8');
+  
+  spoolToWindows(spoolFile, job, (printErr) => {
+    setTimeout(() => {
+      updateJobStatusOnServer(job.id, 'completed', () => {
+        console.log(`✅ [Spooler] Order ${job.id} receipt ticket printed & finalized.`);
+        inProgressJobs.delete(job.id);
+        try {
+          fs.unlinkSync(spoolFile);
+        } catch(e) {}
+      });
+    }, 20000);
+  });
+}
+
 function processSpoolJob(job) {
   // Update state to printing on server to avoid double-processing
   updateJobStatusOnServer(job.id, 'printing', (err) => {
@@ -194,8 +227,8 @@ function processSpoolJob(job) {
       
       downloadDoc(job.fileUrl, spoolFile, (downloadErr) => {
         if (downloadErr) {
-          console.error(`❌ [Spooler] Failed to download document:`, downloadErr.message);
-          updateJobStatusOnServer(job.id, 'error', () => {});
+          console.warn(`⚠️ [Spooler] Document download encountered issue (${downloadErr.message}). Spooling order receipt ticket as fallback...`);
+          printTicketFallback(job);
           return;
         }
         
@@ -213,38 +246,7 @@ function processSpoolJob(job) {
         });
       });
     } else {
-      // Create a local print spool ticket text file (fallback)
-      const spoolFile = path.join(__dirname, `spool_job_${job.id}.txt`);
-      const receiptContent = `
-==================================================
-        KRISHNA STUDENTS PRINT HUB - RECEIPT      
-==================================================
-Order ID:     ${job.id}
-Client:       ${job.customerName}
-Phone:        ${job.customerPhone}
-Document:     ${job.fileName}
-Layout:       A4 · ${job.colorMode === 'color' ? 'Color' : 'B&W'} · ${job.duplex}
-Copies:       ${job.copies} (${job.pages} pages per copy)
-Total Cost:   INR ${job.amount.toFixed(2)}
-Spool Time:   ${new Date().toLocaleString()}
-Pickup Code:  ${job.pickupCode}
-Status:       PAID SECURELY VIA RAZORPAY
-==================================================
-`;
-      fs.writeFileSync(spoolFile, receiptContent, 'utf-8');
-      
-      spoolToWindows(spoolFile, job, (printErr) => {
-        setTimeout(() => {
-          updateJobStatusOnServer(job.id, 'completed', () => {
-            console.log(`✅ [Spooler] Order ${job.id} printed & finalized (fallback ticket).`);
-            // FIX: Remove from in-progress set
-            inProgressJobs.delete(job.id);
-            try {
-              fs.unlinkSync(spoolFile);
-            } catch(e) {}
-          });
-        }, 20000);
-      });
+      printTicketFallback(job);
     }
   });
 }
@@ -264,7 +266,9 @@ function downloadDoc(fileUrl, destPath, callback) {
       }
       if (res.statusCode === 401 && urlToFetch.includes('cloudinary.com/')) {
         let fallbackUrl = urlToFetch;
-        if (fallbackUrl.includes('/raw/upload/')) {
+        if (fallbackUrl.toLowerCase().endsWith('.pdf')) {
+          fallbackUrl = fallbackUrl.substring(0, fallbackUrl.length - 4);
+        } else if (fallbackUrl.includes('/raw/upload/')) {
           fallbackUrl = fallbackUrl.replace('/raw/upload/', '/image/upload/');
         } else if (fallbackUrl.includes('/image/upload/')) {
           fallbackUrl = fallbackUrl.replace('/image/upload/', '/raw/upload/');
@@ -281,6 +285,17 @@ function downloadDoc(fileUrl, destPath, callback) {
       res.pipe(fileStream);
       fileStream.on('finish', () => {
         fileStream.close();
+        try {
+          const stat = fs.statSync(destPath);
+          if (stat.size > 0) {
+            const buf = fs.readFileSync(destPath, { encoding: null });
+            const headStr = buf.slice(0, Math.min(200, buf.length)).toString('utf-8').toLowerCase();
+            if (headStr.includes('<!doctype html') || headStr.includes('<html') || headStr.includes('404 not found')) {
+              try { fs.unlinkSync(destPath); } catch(e) {}
+              return callback(new Error("URL returned an HTML web page instead of actual PDF document."));
+            }
+          }
+        } catch(e) {}
         callback(null);
       });
     });

@@ -428,35 +428,96 @@ export default function UploadPage() {
                   <select 
                     value={paperSize}
                     onChange={e => setPaperSize(e.target.value as any)}
-                    className="input-field py-1.5"
+                    className="input-field py-2"
                   >
-                    <option value="A4">A4</option>
-                    <option value="A3">A3</option>
+                    <option value="A4">A4 (Standard)</option>
+                    <option value="A3">A3 (Large)</option>
                     <option value="Letter">Letter</option>
                     <option value="Legal">Legal</option>
                   </select>
                 </div>
-                <div>
-                  <label className="text-slate-500 font-semibold mb-1 block">Color Mode</label>
-                  <select 
-                    value={colorMode}
-                    onChange={e => setColorMode(e.target.value as any)}
-                    className="input-field py-1.5"
+              </div>
+
+              {/* Color Mode Selection Buttons */}
+              <div>
+                <label className="text-slate-600 text-xs font-bold mb-1.5 flex justify-between items-center">
+                  <span>Color Mode</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Choose print color</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setColorMode('bw')}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition-all text-left ${
+                      colorMode === 'bw'
+                        ? 'border-slate-800 bg-slate-900 text-white shadow-md scale-[1.01]'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400'
+                    }`}
                   >
-                    <option value="bw">Black & White (₹{pricing.A4_BW})</option>
-                    <option value="color">Color (₹{pricing.A4_Color})</option>
-                  </select>
+                    <div className="flex items-center gap-2.5">
+                      <span className={`w-3.5 h-3.5 rounded-full border ${colorMode === 'bw' ? 'bg-white border-white' : 'bg-slate-800 border-slate-800'}`}></span>
+                      <div>
+                        <div className="font-bold text-xs">Black & White</div>
+                        <div className={`text-[10px] ${colorMode === 'bw' ? 'text-slate-300' : 'text-slate-400'}`}>
+                          ₹{paperSize === 'A4' ? pricing.A4_BW : paperSize === 'A3' ? pricing.A3_BW : pricing.Letter_BW} / page
+                        </div>
+                      </div>
+                    </div>
+                    {colorMode === 'bw' && <span className="text-xs font-black">✓</span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setColorMode('color')}
+                    className={`p-3 rounded-xl border flex items-center justify-between transition-all text-left ${
+                      colorMode === 'color'
+                        ? 'border-brand-600 bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md scale-[1.01]'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-rose-500 via-amber-400 to-emerald-400 shadow-sm"></span>
+                      <div>
+                        <div className="font-bold text-xs">Full Color 🎨</div>
+                        <div className={`text-[10px] ${colorMode === 'color' ? 'text-white/80' : 'text-slate-400'}`}>
+                          ₹{paperSize === 'A4' ? pricing.A4_Color : paperSize === 'A3' ? pricing.A3_Color : pricing.A4_Color} / page
+                        </div>
+                      </div>
+                    </div>
+                    {colorMode === 'color' && <span className="text-xs font-black">✓</span>}
+                  </button>
                 </div>
-                <div>
-                  <label className="text-slate-500 font-semibold mb-1 block">Duplex Mode</label>
-                  <select 
-                    value={duplex}
-                    onChange={e => setDuplex(e.target.value as any)}
-                    className="input-field py-1.5"
+              </div>
+
+              {/* Duplex Selection Buttons */}
+              <div>
+                <label className="text-slate-600 text-xs font-bold mb-1.5 flex justify-between items-center">
+                  <span>Printing Sides</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Single or Double Sided</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setDuplex('simplex')}
+                    className={`py-2 px-3 rounded-xl border text-center font-bold text-xs transition-all ${
+                      duplex === 'simplex'
+                        ? 'border-brand-600 bg-brand-50 text-brand-700 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
                   >
-                    <option value="simplex">Single Sided</option>
-                    <option value="duplex">Double Sided</option>
-                  </select>
+                    📄 Single Sided
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDuplex('duplex')}
+                    className={`py-2 px-3 rounded-xl border text-center font-bold text-xs transition-all ${
+                      duplex === 'duplex'
+                        ? 'border-brand-600 bg-brand-50 text-brand-700 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    📖 Double Sided
+                  </button>
                 </div>
               </div>
 

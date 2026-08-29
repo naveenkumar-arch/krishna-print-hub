@@ -1028,15 +1028,13 @@ public class PrintAgent {
             System.out.println("Using SumatraPDF utility for printing document silently...");
             List<String> cmd = new ArrayList<>();
             cmd.add(helperExe.getAbsolutePath());
+            cmd.add("-silent");
             if (printerName != null && !printerName.trim().isEmpty()) {
                 cmd.add("-print-to");
                 cmd.add(printerName.trim());
             } else {
                 cmd.add("-print-to-default");
             }
-
-            // Always add -silent to prevent hanging dialogs
-            cmd.add("-silent");
 
             // Build SumatraPDF print settings
             List<String> settingsList = new ArrayList<>();

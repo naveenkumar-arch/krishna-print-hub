@@ -28,6 +28,8 @@ interface PrinterConfig {
     A3?: number;
   };
   isDefault: boolean;
+  isDefaultBW?: boolean;
+  isDefaultColor?: boolean;
   supportsColor?: boolean;
   supportsA3?: boolean;
   isHighSpeed?: boolean;
@@ -303,9 +305,48 @@ export default function AdminPrintersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ printers: updated })
       });
-      toast.success("Default printer configured on cloud.");
+      toast.success("General default printer updated!");
     } catch (err) {
       toast.error("Failed to sync default printer configuration.");
+    }
+  };
+
+  const handleSetDefaultBW = async (id: string) => {
+    const updated = printers.map(p => ({
+      ...p,
+      isDefaultBW: p.id === id ? !p.isDefaultBW : false
+    }));
+    setPrinters(updated);
+
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printers: updated })
+      });
+      toast.success("Default Black & White printer updated!");
+    } catch (err) {
+      toast.error("Failed to sync configuration.");
+    }
+  };
+
+  const handleSetDefaultColor = async (id: string) => {
+    const updated = printers.map(p => ({
+      ...p,
+      isDefaultColor: p.id === id ? !p.isDefaultColor : false,
+      supportsColor: p.id === id ? true : p.supportsColor
+    }));
+    setPrinters(updated);
+
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ printers: updated })
+      });
+      toast.success("Default Color printer updated!");
+    } catch (err) {
+      toast.error("Failed to sync configuration.");
     }
   };
 
@@ -414,13 +455,25 @@ export default function AdminPrintersPage() {
       <div className="grid md:grid-cols-2 gap-6">
         {printers.map(p => (
           <div key={p.id} className={`card-premium bg-white p-6 relative ${
-            p.isDefault ? 'border-brand-300 ring-2 ring-brand-600/5' : ''
+            p.isDefault || p.isDefaultBW || p.isDefaultColor ? 'border-brand-300 ring-2 ring-brand-600/5' : ''
           }`}>
-            {p.isDefault && (
-              <span className="absolute top-4 right-4 bg-brand-50 text-brand-600 border border-brand-200 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full">
-                Default Printer
-              </span>
-            )}
+            <div className="absolute top-4 right-4 flex flex-wrap gap-1 justify-end max-w-[220px]">
+              {p.isDefault && (
+                <span className="bg-brand-50 text-brand-600 border border-brand-200 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full">
+                  ⭐ Default Fallback
+                </span>
+              )}
+              {p.isDefaultBW && (
+                <span className="bg-slate-900 text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-full shadow-xs">
+                  ⚫ Default B&W
+                </span>
+              )}
+              {p.isDefaultColor && (
+                <span className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-full shadow-xs">
+                  🎨 Default Color
+                </span>
+              )}
+            </div>
 
             <div className="flex gap-3 mb-4">
               <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
@@ -433,6 +486,54 @@ export default function AdminPrintersPage() {
                   {p.connectionType === 'USB' ? <Usb size={11} /> : <Wifi size={11} />}
                   Connection Type: {p.connectionType} {p.ipAddress ? `(${p.ipAddress})` : ''}
                 </span>
+              </div>
+            </div>
+
+            {/* Smart Auto-Routing Role Selection */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 mb-4 space-y-1.5">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Default Auto-Routing Role:</span>
+                <span className="text-[9px] text-slate-400">Routes orders by customer choice</span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleSetDefaultBW(p.id)}
+                  className={`text-[10px] font-bold py-1.5 px-2 rounded-lg border text-center transition-all ${
+                    p.isDefaultBW
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'
+                  }`}
+                  title="Route all Black & White print jobs to this printer"
+                >
+                  ⚫ {p.isDefaultBW ? 'B&W Default ✓' : 'Set B&W'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSetDefaultColor(p.id)}
+                  className={`text-[10px] font-bold py-1.5 px-2 rounded-lg border text-center transition-all ${
+                    p.isDefaultColor
+                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-600 shadow-sm'
+                      : 'bg-white text-purple-700 border-slate-200 hover:border-purple-300'
+                  }`}
+                  title="Route all Color print jobs to this printer"
+                >
+                  🎨 {p.isDefaultColor ? 'Color Default ✓' : 'Set Color'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSetDefault(p.id)}
+                  className={`text-[10px] font-bold py-1.5 px-2 rounded-lg border text-center transition-all ${
+                    p.isDefault
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                  }`}
+                  title="Make this the general fallback printer"
+                >
+                  ⭐ {p.isDefault ? 'General Default ✓' : 'Set General'}
+                </button>
               </div>
             </div>
 
@@ -504,14 +605,6 @@ export default function AdminPrintersPage() {
 
             {/* Action buttons */}
             <div className="flex gap-2 justify-end">
-              {!p.isDefault && (
-                <button 
-                  onClick={() => handleSetDefault(p.id)}
-                  className="bg-brand-50 text-brand-700 border border-brand-200 hover:bg-brand-100 text-xs font-bold py-1.5 px-3 rounded-lg"
-                >
-                  Set Default
-                </button>
-              )}
               <button 
                 onClick={() => handleEditClick(p)}
                 className="bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-bold py-1.5 px-3 rounded-lg"

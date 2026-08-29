@@ -906,15 +906,22 @@ public class PrintAgent {
 
                             // Priority 1: Match BOTH A3 and Color requirements if needed
                             for (Map<String, Object> p : localMatchingPrinters) {
-                                boolean okColor = !isColorJob || Boolean.TRUE.equals(p.get("supportsColor"));
+                                boolean okColor = !isColorJob || Boolean.TRUE.equals(p.get("supportsColor")) || Boolean.TRUE.equals(p.get("isDefaultColor"));
                                 boolean okA3 = !isA3Job || Boolean.TRUE.equals(p.get("supportsA3"));
                                 if (isColorJob && isA3Job && okColor && okA3) {
                                     return (String) p.get("name");
                                 }
                             }
 
-                            // Priority 2: If Color job, select printer with supportsColor == true
+                            // If Color job:
                             if (isColorJob) {
+                                // Priority 2a: Explicit Default Color Printer
+                                for (Map<String, Object> p : localMatchingPrinters) {
+                                    if (Boolean.TRUE.equals(p.get("isDefaultColor"))) {
+                                        return (String) p.get("name");
+                                    }
+                                }
+                                // Priority 2b: Any printer with supportsColor == true
                                 for (Map<String, Object> p : localMatchingPrinters) {
                                     if (Boolean.TRUE.equals(p.get("supportsColor"))) {
                                         return (String) p.get("name");
@@ -922,8 +929,15 @@ public class PrintAgent {
                                 }
                             }
 
-                            // Priority 3: If B&W job, prefer dedicated monochrome printer
+                            // If Black & White job:
                             if (!isColorJob) {
+                                // Priority 3a: Explicit Default Black & White Printer
+                                for (Map<String, Object> p : localMatchingPrinters) {
+                                    if (Boolean.TRUE.equals(p.get("isDefaultBW"))) {
+                                        return (String) p.get("name");
+                                    }
+                                }
+                                // Priority 3b: Dedicated monochrome printer (supportsColor == false)
                                 for (Map<String, Object> p : localMatchingPrinters) {
                                     if (Boolean.FALSE.equals(p.get("supportsColor"))) {
                                         return (String) p.get("name");
@@ -931,7 +945,7 @@ public class PrintAgent {
                                 }
                             }
 
-                            // Priority 4: Default printer
+                            // Priority 4: General Default printer
                             for (Map<String, Object> p : localMatchingPrinters) {
                                 if (Boolean.TRUE.equals(p.get("isDefault"))) {
                                     return (String) p.get("name");
@@ -1399,6 +1413,8 @@ public class PrintAgent {
                 map.put("id", extractJsonVal(block, "id"));
                 map.put("name", extractJsonVal(block, "name"));
                 map.put("isDefault", block.contains("\"isDefault\":true"));
+                map.put("isDefaultBW", block.contains("\"isDefaultBW\":true"));
+                map.put("isDefaultColor", block.contains("\"isDefaultColor\":true"));
                 map.put("supportsColor", block.contains("\"supportsColor\":true"));
                 map.put("supportsA3", block.contains("\"supportsA3\":true"));
                 map.put("isHighSpeed", block.contains("\"isHighSpeed\":true"));

@@ -57,6 +57,8 @@ export interface Printer {
     A3?: number;
   };
   isDefault: boolean;
+  isDefaultBW?: boolean;
+  isDefaultColor?: boolean;
   supportsColor?: boolean;
   supportsA3?: boolean;
   isHighSpeed?: boolean;

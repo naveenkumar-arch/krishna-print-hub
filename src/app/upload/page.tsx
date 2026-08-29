@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { mockPricing, mockRules } from '@/lib/mockData';
 import { detectExactPageCount } from '@/lib/pageCounter';
+import { uploadDocumentFile } from '@/lib/clientUpload';
 import toast from 'react-hot-toast';
 
 export default function UploadPage() {
@@ -182,20 +183,14 @@ export default function UploadPage() {
       let fileUrl = '';
       if (selectedFile) {
         toast.loading("Uploading document to shop database...", { id: "upload-file" });
-        const uploadData = new FormData();
-        uploadData.append('file', selectedFile);
+        const uploadResult = await uploadDocumentFile(selectedFile);
         
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: uploadData
-        });
-        const uploadJson = await uploadRes.json();
-        if (!uploadJson.success) {
-          toast.error(uploadJson.error || "Failed to upload file to server.", { id: "upload-file" });
+        if (!uploadResult.success || !uploadResult.fileUrl) {
+          toast.error(uploadResult.error || "Failed to upload file to server.", { id: "upload-file" });
           setUploading(false);
           return;
         }
-        fileUrl = uploadJson.fileUrl;
+        fileUrl = uploadResult.fileUrl;
         toast.success("Document uploaded successfully!", { id: "upload-file" });
       }
 

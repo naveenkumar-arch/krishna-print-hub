@@ -8,7 +8,7 @@ import {
   ShieldCheck, Zap, AlertTriangle 
 } from 'lucide-react';
 import { mockPricing, mockRules } from '@/lib/mockData';
-import { PDFDocument } from 'pdf-lib';
+import { detectExactPageCount } from '@/lib/pageCounter';
 import toast from 'react-hot-toast';
 
 export default function UploadPage() {
@@ -70,50 +70,23 @@ export default function UploadPage() {
       }
 
       setSelectedFile(file);
+      toast.loading("Analyzing document structure & page count...", { id: 'analyze-doc' });
 
-      const isImage = file.type.startsWith('image/') || file.name.match(/\.(jpg|jpeg|png|gif|webp|tiff|bmp)$/i);
-      if (isImage) {
-        setPagesCount(1);
-        toast.success(`Loaded image: ${file.name} (1 page)`);
-        return;
-      }
-
-      const isPdf = file.name.toLowerCase().endsWith('.pdf');
-      if (isPdf) {
-        toast.loading("Analyzing PDF document...", { id: 'upload-pdf' });
-        try {
-          const buffer = await file.arrayBuffer();
-          let pCount = 1;
-          try {
-            const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-            pCount = pdfDoc.getPageCount();
-          } catch (pdfErr) {
-            // Regex fallback
-            const text = new TextDecoder('utf-8').decode(new Uint8Array(buffer));
-            const countMatch = text.match(/\/Count\s+(\d+)/);
-            if (countMatch && countMatch[1]) {
-              pCount = parseInt(countMatch[1]);
-            } else {
-              const matches = text.match(/\/Type\s*\/Page\b/g);
-              pCount = matches ? matches.length : 1;
-            }
-          }
-
-          if (pCount > rules.maxPages) {
-            toast.error(`PDF has ${pCount} pages, which exceeds the maximum store limit of ${rules.maxPages} pages.`, { id: 'upload-pdf' });
-            setSelectedFile(null);
-            setPagesCount(0);
-            return;
-          }
-          setPagesCount(Math.max(1, pCount));
-          toast.success(`Loaded PDF: ${file.name} (${pCount} page${pCount > 1 ? 's' : ''})`, { id: 'upload-pdf' });
-        } catch (err) {
-          setPagesCount(1);
-          toast.success(`Loaded PDF: ${file.name} (1 page detected)`, { id: 'upload-pdf' });
+      try {
+        const result = await detectExactPageCount(file);
+        
+        if (result.pages > rules.maxPages) {
+          toast.error(`Document has ${result.pages} pages, which exceeds the maximum store limit of ${rules.maxPages} pages.`, { id: 'analyze-doc' });
+          setSelectedFile(null);
+          setPagesCount(0);
+          return;
         }
-      } else {
+
+        setPagesCount(result.pages);
+        toast.success(`Loaded ${file.name} (${result.detail})`, { id: 'analyze-doc' });
+      } catch (err) {
         setPagesCount(1);
-        toast.success(`Loaded file: ${file.name} (1 page)`);
+        toast.success(`Loaded ${file.name} (1 page detected)`, { id: 'analyze-doc' });
       }
     }
   };

@@ -20,11 +20,29 @@ export async function GET(
     const fileBuffer = fs.readFileSync(filePath);
     const ext = path.extname(filePath).toLowerCase();
 
-    let contentType = 'application/octet-stream';
-    if (ext === '.pdf') contentType = 'application/pdf';
-    else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
-    else if (ext === '.png') contentType = 'image/png';
-    else if (ext === '.txt') contentType = 'text/plain; charset=utf-8';
+    const mimeTypes: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.doc': 'application/msword',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls': 'application/vnd.ms-excel',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+      '.gif': 'image/gif',
+      '.tiff': 'image/tiff',
+      '.tif': 'image/tiff',
+      '.txt': 'text/plain; charset=utf-8',
+      '.csv': 'text/csv; charset=utf-8',
+      '.log': 'text/plain; charset=utf-8',
+      '.md': 'text/markdown; charset=utf-8'
+    };
+
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
 
     return new Response(fileBuffer, {
       status: 200,

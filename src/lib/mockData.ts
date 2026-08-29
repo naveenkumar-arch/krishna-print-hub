@@ -28,7 +28,11 @@ export const mockRules: PrintRules = {
   maxCopies: 50,
   maxPages: 500,
   autoApprovalPageLimit: 50, // if an order is more than 50 pages total, it needs owner approval
-  allowedFileTypes: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'png', 'jpeg'],
+  allowedFileTypes: [
+    'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 
+    'jpg', 'png', 'jpeg', 'webp', 'bmp', 'tiff', 'tif', 'gif', 
+    'txt', 'csv', 'md', 'log'
+  ],
   allowedPaperSizes: ['A4', 'A3', 'Letter', 'Legal'],
   allowedColorModes: ['bw', 'color'],
   allowDuplex: true,

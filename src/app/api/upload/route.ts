@@ -17,9 +17,16 @@ export async function POST(request: Request) {
 
     const rules = await db.getRules();
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
-    const allowedExts = rules.allowedFileTypes || ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'png', 'jpeg'];
+    const defaultAllowed = [
+      'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 
+      'jpg', 'png', 'jpeg', 'webp', 'bmp', 'tiff', 'tif', 'gif', 
+      'txt', 'csv', 'md', 'log'
+    ];
+    const allowedExts = rules.allowedFileTypes && rules.allowedFileTypes.length > 0
+      ? Array.from(new Set([...rules.allowedFileTypes.map((e: string) => e.toLowerCase()), ...defaultAllowed]))
+      : defaultAllowed;
     
-    if (ext && allowedExts.length > 0 && !allowedExts.includes(ext)) {
+    if (ext && !allowedExts.includes(ext)) {
       return NextResponse.json({ 
         error: `File format '.${ext}' is not permitted by store rules. Allowed extensions: ${allowedExts.map(e => e.toUpperCase()).join(', ')}` 
       }, { status: 400 });

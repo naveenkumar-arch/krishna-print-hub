@@ -18,18 +18,24 @@ export const PDFDropzone: React.FC<PDFDropzoneProps> = ({
   onFilesSelected,
   acceptTypes = {
     'application/pdf': ['.pdf'],
-    'image/png': ['.png'],
-    'image/jpeg': ['.jpg', '.jpeg'],
+    'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff', '.tif', '.gif'],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+    'application/msword': ['.doc'],
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+    'application/vnd.ms-powerpoint': ['.ppt'],
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+    'application/vnd.ms-excel': ['.xls'],
+    'text/plain': ['.txt', '.csv', '.md', '.log']
   },
   multiple = true,
-  title = 'Select PDF files',
-  subtitle = 'or drop PDFs here',
+  title = 'Select files to upload',
+  subtitle = 'or drop documents & images here',
   maxFiles = 20,
 }) => {
   const onDrop = useCallback(
     (acceptedFiles: File[], rejectedFiles: any[]) => {
       if (rejectedFiles && rejectedFiles.length > 0) {
-        toast.error('Some files were rejected. Please upload valid PDF, PNG, or JPG files.');
+        toast.error('Some files were rejected. Please upload valid PDF, Office documents, or Images.');
       }
       if (acceptedFiles.length > 0) {
         onFilesSelected(acceptedFiles);

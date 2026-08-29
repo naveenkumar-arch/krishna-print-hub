@@ -379,7 +379,7 @@ export default function UploadPage() {
               <input 
                 type="file" 
                 onChange={handleFileChange}
-                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.txt,.csv,.md,.log,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/*,text/plain"
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
               <FileText size={36} className="text-brand-600 mb-3" />

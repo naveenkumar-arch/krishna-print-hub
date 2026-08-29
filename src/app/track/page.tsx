@@ -87,6 +87,8 @@ function TrackContent() {
       completed: { label: '🎉 Ready for Pickup', class: 'badge-completed' },
       cancelled: { label: '❌ Cancelled', class: 'badge-cancelled' },
       waiting_approval: { label: '⏳ Waiting for Review', class: 'badge-waiting' },
+      waiting_cash: { label: '💵 Pay Cash at Counter', class: 'badge-waiting' },
+      error: { label: '⚠️ Print Error / Retrying', class: 'badge-cancelled' }
     };
 
     const data = labels[status] || { label: status, class: 'bg-slate-100 text-slate-700' };

@@ -33,7 +33,7 @@ export default function AdminQueuePage() {
       .then(res => res.json())
       .then(data => {
         if (data && data.orders) {
-          setQueuedJobs(data.orders.filter((o: any) => o.status === 'queued'));
+          setQueuedJobs(data.orders.filter((o: any) => ['queued', 'paid', 'waiting_approval', 'waiting_cash'].includes(o.status)));
           setPrintingJob(data.orders.find((o: any) => o.status === 'printing') || null);
           setCompletedTodayJobs(
             data.orders.filter((o: any) => o.status === 'completed' && isToday(o.createdAt))
@@ -46,7 +46,7 @@ export default function AdminQueuePage() {
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            setQueuedJobs(parsed.filter((o: any) => o.status === 'queued'));
+            setQueuedJobs(parsed.filter((o: any) => ['queued', 'paid', 'waiting_approval', 'waiting_cash'].includes(o.status)));
             setPrintingJob(parsed.find((o: any) => o.status === 'printing') || null);
             setCompletedTodayJobs(
               parsed.filter((o: any) => o.status === 'completed' && isToday(o.createdAt))

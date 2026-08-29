@@ -34,30 +34,23 @@ export default function AdminDashboardPage() {
         }
       });
 
-    // Check print agent connectivity dynamically
+    // Check print agent connectivity dynamically from central database
     const checkPrinters = () => {
-      fetch('http://localhost:4000/status')
+      fetch('/api/config')
         .then(res => res.json())
         .then(data => {
-          if (data.printers && data.printers.length > 0) {
-            const mapped = data.printers.map((p: any, idx: number) => ({
-              id: `real-${idx}`,
-              name: p.Name,
-              brand: "Windows Spooler",
-              model: "Active Ink/Laser",
-              status: (p.PrinterStatus.toLowerCase() === 'idle' ? 'idle' : 'offline') as 'idle' | 'offline',
-              inkLevels: { black: p.InkLevel || 92 },
-              paperLevels: { A4: p.PaperLevel || 420 }
-            }));
-            setPrinters(mapped);
+          if (data && data.printers && data.printers.length > 0) {
+            setPrinters(data.printers);
           }
         })
         .catch(() => {
           const savedCustom = localStorage.getItem('customPrinters');
           if (savedCustom) {
-            setPrinters(JSON.parse(savedCustom));
-          } else {
-            setPrinters([]);
+            try {
+              setPrinters(JSON.parse(savedCustom));
+            } catch (e) {
+              setPrinters([]);
+            }
           }
         });
     };
@@ -279,10 +272,10 @@ export default function AdminDashboardPage() {
                       <div>
                         <div className="flex justify-between text-slate-500 mb-0.5">
                           <span>Toner / Black Ink</span>
-                          <span className="font-bold text-slate-700">{p.inkLevels.black}%</span>
+                          <span className="font-bold text-slate-700">{p.inkLevels?.black ?? 100}%</span>
                         </div>
                         <div className="w-full bg-slate-200 rounded-full h-1.5">
-                          <div className="bg-brand-600 h-1.5 rounded-full" style={{ width: `${p.inkLevels.black}%` }}></div>
+                          <div className="bg-brand-600 h-1.5 rounded-full" style={{ width: `${p.inkLevels?.black ?? 100}%` }}></div>
                         </div>
                       </div>
                       <div>

@@ -380,7 +380,8 @@ export default function LandingPage() {
       }
 
       if (!response.ok || !data.success) {
-        const errorMsg = data.error || `Order creation failed with status ${response.status}`;
+        const rawErr = data?.error;
+        const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr ? JSON.stringify(rawErr) : `Order creation failed with status ${response.status}`);
         toast.error(errorMsg);
         setUploading(false);
         return;

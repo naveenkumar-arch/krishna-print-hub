@@ -72,9 +72,20 @@ export default function AdminQueuePage() {
 
   useEffect(() => {
     const checkAgent = () => {
-      fetch('http://localhost:4000/status')
+      fetch('/api/config')
         .then(res => res.json())
-        .then(data => { setAgentConnected(true); setPcName(data.pcName); })
+        .then(cfg => {
+          const ping = cfg.lastAgentPing;
+          if (ping) {
+            const diff = Date.now() - new Date(ping).getTime();
+            if (diff < 15000) {
+              setAgentConnected(true);
+              setPcName(cfg.agentPcName || 'COUNTER-PC');
+              return;
+            }
+          }
+          setAgentConnected(false);
+        })
         .catch(() => setAgentConnected(false));
     };
     checkAgent();

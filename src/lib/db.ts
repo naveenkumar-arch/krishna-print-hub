@@ -113,23 +113,125 @@ async function writeDb(data: Schema): Promise<void> {
   }
 }
 
+export function sanitizeOrder(o: any): Order {
+  if (!o || typeof o !== 'object') {
+    return {
+      id: `KP-${Math.floor(1000 + Math.random() * 9000)}`,
+      customerName: 'Customer',
+      customerPhone: '',
+      fileUrl: '',
+      fileName: 'document.pdf',
+      fileSize: 1,
+      pages: 1,
+      copies: 1,
+      colorMode: 'bw',
+      paperSize: 'A4',
+      duplex: 'simplex',
+      orientation: 'portrait',
+      amount: 0,
+      status: 'pending',
+      paymentId: '',
+      source: 'web',
+      assignedPrinterId: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  return {
+    id: typeof o.id === 'string' && o.id ? o.id : `KP-${Math.floor(1000 + Math.random() * 9000)}`,
+    customerName: typeof o.customerName === 'string' ? o.customerName : (typeof o.customerName === 'object' ? 'Customer' : String(o.customerName || 'Customer')),
+    customerPhone: typeof o.customerPhone === 'string' ? o.customerPhone : (typeof o.customerPhone === 'object' ? '' : String(o.customerPhone || '')),
+    fileUrl: typeof o.fileUrl === 'string' ? o.fileUrl : '',
+    fileName: typeof o.fileName === 'string' ? o.fileName : (typeof o.fileName === 'object' ? 'document.pdf' : String(o.fileName || 'document.pdf')),
+    fileSize: typeof o.fileSize === 'number' && !isNaN(o.fileSize) ? o.fileSize : Number(o.fileSize) || 1,
+    pages: typeof o.pages === 'number' && !isNaN(o.pages) ? o.pages : parseInt(String(o.pages)) || 1,
+    copies: typeof o.copies === 'number' && !isNaN(o.copies) ? o.copies : parseInt(String(o.copies)) || 1,
+    colorMode: o.colorMode === 'color' ? 'color' : 'bw',
+    paperSize: typeof o.paperSize === 'string' && o.paperSize ? o.paperSize : 'A4',
+    duplex: o.duplex === 'duplex' ? 'duplex' : 'simplex',
+    orientation: o.orientation === 'landscape' ? 'landscape' : 'portrait',
+    amount: typeof o.amount === 'number' && !isNaN(o.amount) ? o.amount : Number(o.amount) || 0,
+    status: typeof o.status === 'string' && o.status ? o.status : 'pending',
+    paymentId: typeof o.paymentId === 'string' ? o.paymentId : '',
+    source: o.source === 'whatsapp' ? 'whatsapp' : 'web',
+    assignedPrinterId: typeof o.assignedPrinterId === 'string' ? o.assignedPrinterId : '',
+    createdAt: typeof o.createdAt === 'string' && o.createdAt ? o.createdAt : new Date().toISOString(),
+    updatedAt: typeof o.updatedAt === 'string' && o.updatedAt ? o.updatedAt : new Date().toISOString()
+  };
+}
+
+export function sanitizePrinter(p: any, idx: number = 0) {
+  if (!p || typeof p !== 'object') {
+    return {
+      id: `printer-${idx}`,
+      name: `Printer ${idx + 1}`,
+      brand: 'Standard',
+      model: 'Laser/Inkjet',
+      status: 'idle',
+      connectionType: 'USB',
+      ipAddress: '',
+      supportsColor: false,
+      supportsA3: false,
+      isHighSpeed: false,
+      isDefault: idx === 0,
+      isDefaultBW: idx === 0,
+      isDefaultColor: false,
+      inkLevels: { black: 100, cyan: 100, magenta: 100, yellow: 100 },
+      paperLevels: { A4: 500, A3: 250 }
+    };
+  }
+
+  const pName = typeof p.name === 'string' && p.name ? p.name : (typeof p.Name === 'string' && p.Name ? p.Name : `Printer ${idx + 1}`);
+  const pBrand = typeof p.brand === 'string' ? p.brand : 'Standard';
+  const pModel = typeof p.model === 'string' ? p.model : 'Spooler Device';
+
+  return {
+    id: typeof p.id === 'string' && p.id ? p.id : `printer-${idx}`,
+    name: pName,
+    brand: pBrand,
+    model: pModel,
+    status: p.status === 'idle' || p.status === 'printing' ? p.status : (p.PrinterStatus?.toLowerCase() === 'idle' ? 'idle' : (p.status || 'offline')),
+    connectionType: typeof p.connectionType === 'string' ? p.connectionType : 'USB',
+    ipAddress: typeof p.ipAddress === 'string' ? p.ipAddress : '',
+    supportsColor: !!p.supportsColor,
+    supportsA3: !!p.supportsA3,
+    isHighSpeed: !!p.isHighSpeed,
+    isDefault: !!p.isDefault,
+    isDefaultBW: !!p.isDefaultBW,
+    isDefaultColor: !!p.isDefaultColor,
+    inkLevels: {
+      black: typeof p.inkLevels?.black === 'number' ? p.inkLevels.black : (typeof p.InkLevel === 'number' ? p.InkLevel : (typeof p.Toner === 'number' ? p.Toner : 100)),
+      cyan: typeof p.inkLevels?.cyan === 'number' ? p.inkLevels.cyan : 100,
+      magenta: typeof p.inkLevels?.magenta === 'number' ? p.inkLevels.magenta : 100,
+      yellow: typeof p.inkLevels?.yellow === 'number' ? p.inkLevels.yellow : 100
+    },
+    paperLevels: {
+      A4: typeof p.paperLevels?.A4 === 'number' ? p.paperLevels.A4 : (typeof p.PaperLevel === 'number' ? p.PaperLevel : 500),
+      A3: typeof p.paperLevels?.A3 === 'number' ? p.paperLevels.A3 : 250
+    }
+  };
+}
+
 export const db = {
   getOrders: async (): Promise<Order[]> => {
     const data = await readDb();
-    return data.orders || [];
+    const rawOrders = data.orders || [];
+    return rawOrders.map(sanitizeOrder);
   },
   
   saveOrder: async (order: Order): Promise<Order> => {
+    const cleanOrder = sanitizeOrder(order);
     const data = await readDb();
     if (!data.orders) data.orders = [];
-    const index = data.orders.findIndex(o => o.id === order.id);
+    const index = data.orders.findIndex(o => o.id === cleanOrder.id);
     if (index >= 0) {
-      data.orders[index] = { ...data.orders[index], ...order, updatedAt: new Date().toISOString() };
+      data.orders[index] = { ...data.orders[index], ...cleanOrder, updatedAt: new Date().toISOString() };
     } else {
-      data.orders.unshift(order);
+      data.orders.unshift(cleanOrder);
     }
     await writeDb(data);
-    return order;
+    return cleanOrder;
   },
 
   updateOrderStatus: async (id: string, status: Order['status']): Promise<Order | null> => {
@@ -234,14 +336,16 @@ export const db = {
 
   getPrinters: async (): Promise<any[]> => {
     const data = await readDb();
-    return data.printers || [];
+    const raw = data.printers || [];
+    return raw.map((p, i) => sanitizePrinter(p, i));
   },
 
   savePrinters: async (printers: any[]): Promise<any[]> => {
+    const clean = (printers || []).map((p, i) => sanitizePrinter(p, i));
     const data = await readDb();
-    data.printers = printers;
+    data.printers = clean;
     await writeDb(data);
-    return printers;
+    return clean;
   },
 
   getAutoPrintEnabled: async (): Promise<boolean> => {

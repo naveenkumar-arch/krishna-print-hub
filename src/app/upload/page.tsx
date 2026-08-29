@@ -225,7 +225,8 @@ export default function UploadPage() {
       }
 
       if (!response.ok || !data.success) {
-        const errorMsg = data.error || `Order creation failed with status ${response.status}`;
+        const rawErr = data?.error;
+        const errorMsg = typeof rawErr === 'string' ? rawErr : (rawErr ? JSON.stringify(rawErr) : `Order creation failed with status ${response.status}`);
         toast.error(errorMsg);
         setUploading(false);
         return;
@@ -328,7 +329,8 @@ export default function UploadPage() {
         const rzp = new (window as any).Razorpay(options);
         
         rzp.on('payment.failed', function (response: any) {
-          toast.error(`Payment Failed: ${response.error.description}`);
+          const failDesc = response?.error?.description || response?.error?.code || 'Transaction failed';
+          toast.error(`Payment Failed: ${typeof failDesc === 'string' ? failDesc : JSON.stringify(failDesc)}`);
           setUploading(false);
         });
 

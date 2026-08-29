@@ -56,7 +56,12 @@ async function verifyAgentToken(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json({ error: "Malformed JSON payload in request." }, { status: 400 });
+    }
     
     if (body.unpairAgent) {
       await db.kvSet('agentVersion', '');

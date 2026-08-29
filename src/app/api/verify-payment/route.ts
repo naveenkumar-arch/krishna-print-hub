@@ -11,7 +11,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Razorpay credentials not configured" }, { status: 401 });
     }
 
-    const body = await request.json();
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json({ error: "Malformed JSON payload in request." }, { status: 400 });
+    }
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature, orderId } = body;
 
     // Validate inputs

@@ -43,24 +43,42 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch (e) {
+      return NextResponse.json({ error: "Malformed JSON payload in request." }, { status: 400 });
+    }
+
     const { 
       id, customerName, customerPhone, fileName, fileSize, 
       pages, copies, paperSize, colorMode, duplex, orientation, source, paymentMethod, couponCode, fileUrl
     } = body;
 
-    // Validate inputs
-    if (!customerPhone) {
+    // Sanitize string & numeric inputs defensively
+    const safePhone = typeof customerPhone === 'string' ? customerPhone.trim() : (customerPhone ? String(customerPhone).trim() : '');
+    if (!safePhone) {
       return NextResponse.json({ error: "Customer phone is required." }, { status: 400 });
     }
 
     // Check customer blocklist
     const blockedPhones = await db.getBlockedPhones();
-    if (blockedPhones.includes(customerPhone)) {
+    if (blockedPhones.includes(safePhone)) {
       return NextResponse.json({ error: "Your phone number has been blocked from placing print orders." }, { status: 403 });
     }
 
-    const orderId = id || "KP-" + Math.floor(1000 + Math.random() * 9000);
+    const safeName = typeof customerName === 'string' ? customerName.trim().slice(0, 100) : 'Customer';
+    const safeFileName = typeof fileName === 'string' ? fileName.trim().slice(0, 255) : 'document.pdf';
+    const safePaperSize = typeof paperSize === 'string' && paperSize.trim() ? paperSize.trim() : 'A4';
+    const safeColorMode = typeof colorMode === 'string' && colorMode.toLowerCase() === 'color' ? 'color' : 'bw';
+    const safeDuplex = typeof duplex === 'string' && duplex.toLowerCase() === 'duplex' ? 'duplex' : 'simplex';
+    const safeOrientation = typeof orientation === 'string' && orientation.toLowerCase() === 'landscape' ? 'landscape' : 'portrait';
+    const safeCoupon = typeof couponCode === 'string' ? couponCode.trim().toUpperCase() : '';
+    const safeCopies = Math.max(1, Math.floor(Number(copies) || 1));
+    const safePages = Math.max(1, Math.floor(Number(pages) || 1));
+    const safeFileSize = Math.max(0.01, Number(fileSize) || 0.1);
+
+    const orderId = (typeof id === 'string' && id.trim()) ? id.trim() : "KP-" + Math.floor(1000 + Math.random() * 9000);
     
     // Get pricing and rules
     const pricing = await db.getPricing();
@@ -68,19 +86,19 @@ export async function POST(request: Request) {
     const razorConfig = await db.getRazorpayConfig();
 
     // Validate bounds against active rules
-    if (copies && copies > rules.maxCopies) {
+    if (rules.maxCopies && safeCopies > rules.maxCopies) {
       return NextResponse.json({ error: `Maximum copies allowed is ${rules.maxCopies}.` }, { status: 400 });
     }
-    if (pages && pages > rules.maxPages) {
+    if (rules.maxPages && safePages > rules.maxPages) {
       return NextResponse.json({ error: `Maximum pages allowed is ${rules.maxPages}.` }, { status: 400 });
     }
-    if (fileSize && fileSize > rules.maxUploadSizeMB) {
+    if (rules.maxUploadSizeMB && safeFileSize > rules.maxUploadSizeMB) {
       return NextResponse.json({ error: `Maximum file size allowed is ${rules.maxUploadSizeMB} MB.` }, { status: 400 });
     }
 
     // Validate file extension against store rules
-    if (fileName) {
-      const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    if (safeFileName) {
+      const ext = safeFileName.split('.').pop()?.toLowerCase() || '';
       const allowedExts = rules.allowedFileTypes || [
         'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 
         'jpg', 'png', 'jpeg', 'webp', 'bmp', 'tiff', 'tif', 'gif', 
@@ -94,20 +112,20 @@ export async function POST(request: Request) {
     }
 
     // Validate paper size and duplex availability
-    if (paperSize && rules.allowedPaperSizes && rules.allowedPaperSizes.length > 0) {
-      if (!rules.allowedPaperSizes.map(s => s.toUpperCase()).includes(paperSize.toUpperCase())) {
-        return NextResponse.json({ error: `Paper size '${paperSize}' is not enabled by store admin.` }, { status: 400 });
+    if (safePaperSize && rules.allowedPaperSizes && rules.allowedPaperSizes.length > 0) {
+      if (!rules.allowedPaperSizes.map(s => String(s).toUpperCase()).includes(safePaperSize.toUpperCase())) {
+        return NextResponse.json({ error: `Paper size '${safePaperSize}' is not enabled by store admin.` }, { status: 400 });
       }
     }
 
-    if (duplex === 'duplex' && rules.allowDuplex === false) {
+    if (safeDuplex === 'duplex' && rules.allowDuplex === false) {
       return NextResponse.json({ error: `Double-sided printing is currently disabled by store admin.` }, { status: 400 });
     }
 
     // Calculate price on server to verify
     let perPagePrice = pricing.A4_BW;
-    const size = (paperSize || 'A4').toUpperCase();
-    const mode = colorMode || 'bw';
+    const size = safePaperSize.toUpperCase();
+    const mode = safeColorMode;
 
     if (size === 'A3') {
       perPagePrice = mode === 'color' ? pricing.A3_Color : pricing.A3_BW;
@@ -119,12 +137,12 @@ export async function POST(request: Request) {
       perPagePrice = mode === 'color' ? pricing.A4_Color : pricing.A4_BW;
     }
 
-    const calculatedAmount = Math.round(perPagePrice * (pages || 1) * (copies || 1));
+    const calculatedAmount = Math.round(perPagePrice * safePages * safeCopies);
     
     let finalAmount = calculatedAmount;
-    if (couponCode) {
+    if (safeCoupon) {
       const coupons = await db.getCoupons();
-      const found = coupons.find(c => c.code === couponCode.toUpperCase() && c.isActive);
+      const found = coupons.find(c => c.code === safeCoupon && c.isActive);
       if (found) {
         const discount = calculatedAmount * (found.discountPercent / 100);
         finalAmount = Math.round(calculatedAmount - discount);
@@ -133,8 +151,8 @@ export async function POST(request: Request) {
 
     const amountInPaise = Math.round(finalAmount * 100);
 
-    const isAutoApproved = (rules.printMode || 'self') === 'self' && (pages || 1) <= rules.autoApprovalPageLimit;
-    const payMethod = paymentMethod || 'online';
+    const isAutoApproved = (rules.printMode || 'self') === 'self' && safePages <= rules.autoApprovalPageLimit;
+    const payMethod = typeof paymentMethod === 'string' ? paymentMethod : 'online';
     let initialStatus: OrderStatus = 'pending';
 
     if (payMethod === 'cash') {

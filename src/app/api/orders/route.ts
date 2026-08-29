@@ -99,12 +99,16 @@ export async function POST(request: Request) {
     // Validate file extension against store rules
     if (safeFileName) {
       const ext = safeFileName.split('.').pop()?.toLowerCase() || '';
-      const allowedExts = rules.allowedFileTypes || [
+      const baseSupported = [
         'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 
         'jpg', 'png', 'jpeg', 'webp', 'bmp', 'tiff', 'tif', 'gif', 
         'txt', 'csv', 'md', 'log'
       ];
-      if (ext && allowedExts.length > 0 && !allowedExts.includes(ext)) {
+      const configured = (rules.allowedFileTypes && rules.allowedFileTypes.length > 0)
+        ? rules.allowedFileTypes.map((e: any) => String(e).toLowerCase())
+        : baseSupported;
+      const allowedExts = Array.from(new Set([...configured, ...baseSupported]));
+      if (ext && !allowedExts.includes(ext)) {
         return NextResponse.json({ 
           error: `File type '.${ext}' is not allowed. Permitted formats: ${allowedExts.map(e => e.toUpperCase()).join(', ')}` 
         }, { status: 400 });

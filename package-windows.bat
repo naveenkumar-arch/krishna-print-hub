@@ -38,7 +38,7 @@ if %errorlevel% neq 0 (
 :: 2. Package into a Runnable JAR File with embedded default config
 echo Creating runnable JAR Archive with default config...
 echo Main-Class: PrintAgent > manifest.txt
-echo site_url=https://krishna-students-print-hub.vercel.app>default_config.properties
+echo site_url=https://krishna-students-print-hub-one.vercel.app>default_config.properties
 jar cfm KrishnaPrintAgent.jar manifest.txt PrintAgent*.class default_config.properties SumatraPDF.exe
 del manifest.txt
 del default_config.properties

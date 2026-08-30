@@ -36,7 +36,7 @@ function createOrderInBackend(orderData, callback) {
     const payload = JSON.stringify(orderData);
     
     const options = {
-        hostname: 'krishna-students-print-hub.vercel.app',
+        hostname: 'krishna-students-print-hub-one.vercel.app',
         port: 443,
         path: '/api/orders',
         method: 'POST',
@@ -118,7 +118,7 @@ function uploadFileToBackend(fileName, fileBase64, callback) {
         ]);
 
         const options = {
-            hostname: 'krishna-students-print-hub.vercel.app',
+            hostname: 'krishna-students-print-hub-one.vercel.app',
             port: 443,
             path: '/api/upload',
             method: 'POST',

@@ -37,7 +37,7 @@ let parsedBackend;
 try {
   parsedBackend = new URL(BACKEND_URL);
 } catch (e) {
-  parsedBackend = new URL('https://krishna-students-print-hub.vercel.app');
+  parsedBackend = new URL('https://krishna-students-print-hub-one.vercel.app');
 }
 
 let targetPrinterName = "";

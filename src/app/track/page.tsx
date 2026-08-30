@@ -17,60 +17,85 @@ function TrackContent() {
   const initialId = searchParams.get('id') || '';
 
   const [searchVal, setSearchVal] = useState(initialId);
-  const [orders, setOrders] = useState(mockOrders);
-  const [searchResults, setSearchResults] = useState<typeof mockOrders>([]);
+  const [orders, setOrders] = useState<any[]>(mockOrders);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
+  const matchOrder = (order: any, query: string) => {
+    if (!query || !order) return false;
+    const q = query.trim().toLowerCase();
+    const qDigits = query.replace(/\D/g, '');
+    const orderId = (order.id || '').toLowerCase();
+    const phone = (order.customerPhone || '');
+    const phoneDigits = phone.replace(/\D/g, '');
+    const name = (order.customerName || '').toLowerCase();
+    const pickup = (order.pickupCode || '').toLowerCase();
+
+    if (orderId === q || orderId.includes(q)) return true;
+    if (pickup && (pickup === q || pickup.includes(q))) return true;
+    if (name && name.includes(q)) return true;
+    if (qDigits && qDigits.length >= 4 && (phoneDigits.includes(qDigits) || qDigits.includes(phoneDigits))) return true;
+    return false;
+  };
+
+  const executeSearch = (term: string, orderList: any[]) => {
+    if (!term.trim()) return;
+    const results = orderList.filter(o => matchOrder(o, term));
+    setSearchResults(results);
+    setHasSearched(true);
+    return results;
+  };
+
   useEffect(() => {
+    // Initial local read for instant display
+    let combinedOrders = [...mockOrders];
+    try {
+      const saved = localStorage.getItem('printOrders');
+      const myOrders = localStorage.getItem('myOrders');
+      const lastPlaced = localStorage.getItem('lastPlacedOrder');
+      
+      const localList: any[] = [];
+      if (lastPlaced) localList.push(JSON.parse(lastPlaced));
+      if (myOrders) localList.push(...JSON.parse(myOrders));
+      if (saved) localList.push(...JSON.parse(saved));
+
+      if (localList.length > 0) {
+        const unique = Array.from(new Map(localList.map(o => [o.id, o])).values());
+        setOrders(unique);
+        combinedOrders = unique;
+        if (initialId) {
+          executeSearch(initialId, unique);
+        }
+      }
+    } catch (e) {}
+
+    // Fetch fresh database orders
     fetch('/api/orders')
       .then(res => res.json())
       .then(data => {
-        if (data && data.orders) {
-          setOrders(data.orders);
-          localStorage.setItem('printOrders', JSON.stringify(data.orders));
+        if (data && Array.isArray(data.orders)) {
+          // Merge server orders with local recent orders
+          const serverOrders = data.orders;
+          const merged = Array.from(new Map([...serverOrders, ...combinedOrders].map((o: any) => [o.id, o])).values());
+          setOrders(merged);
+          localStorage.setItem('printOrders', JSON.stringify(merged));
           if (initialId) {
-            const term = initialId.trim().toLowerCase();
-            const results = data.orders.filter((o: any) => 
-              o.id.toLowerCase() === term ||
-              o.customerPhone.includes(initialId.trim())
-            );
-            setSearchResults(results);
-            setHasSearched(true);
+            const results = executeSearch(initialId, merged);
+            if (results && results.length === 0 && initialId) {
+              setHasSearched(true);
+            }
           }
         }
       })
-      .catch(() => {
-        const saved = localStorage.getItem('printOrders');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            setOrders(parsed);
-            if (initialId) {
-              const term = initialId.trim().toLowerCase();
-              const results = parsed.filter((o: any) => 
-                o.id.toLowerCase() === term ||
-                o.customerPhone.includes(initialId.trim())
-              );
-              setSearchResults(results);
-              setHasSearched(true);
-            }
-          } catch (e) {}
-        }
+      .catch((err) => {
+        console.warn("Could not fetch fresh orders, using local cache:", err);
       });
   }, [initialId]);
 
   const handleSearch = (term: string) => {
     if (!term.trim()) return;
-    
-    // Filter matching order ID or matching phone number
-    const results = orders.filter(o => 
-      o.id.toLowerCase() === term.trim().toLowerCase() ||
-      o.customerPhone.includes(term.trim())
-    );
-    
-    setSearchResults(results);
-    setHasSearched(true);
-    if (results.length > 0) {
+    const results = executeSearch(term, orders);
+    if (results && results.length > 0) {
       toast.success(`Found ${results.length} order(s)`);
     } else {
       toast.error("No orders found matching this search.");

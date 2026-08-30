@@ -39,11 +39,51 @@ const defaultSchema: Schema = {
   ]
 };
 
+// Check database connections: Neon PostgreSQL (Primary cloud), Vercel KV, Local JSON
+const dbUrl = (process.env.DATABASE_URL || "").replace(/"/g, "").trim();
+function parseNeonInfo(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname && parsed.hostname.includes('neon.tech')) {
+      return { host: parsed.hostname, connectionString: url };
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+const neonInfo = parseNeonInfo(dbUrl);
+const isNeonEnabled = !!neonInfo;
+
 // Check if Vercel KV environment variables are configured
 const rawUrl = (process.env.KV_REST_API_URL || "").replace(/"/g, "").trim();
 const rawToken = (process.env.KV_REST_API_TOKEN || "").replace(/"/g, "").trim();
 const isKVEnabled = !!rawUrl && !!rawToken;
 const KV_KEY = 'krishna_print_hub_db';
+
+async function neonQuery(query: string, params: any[] = []): Promise<any> {
+  if (!neonInfo) return null;
+  try {
+    const res = await fetch(`https://${neonInfo.host}/sql`, {
+      method: 'POST',
+      headers: {
+        'Neon-Connection-String': neonInfo.connectionString,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ query, params }),
+      cache: 'no-store'
+    });
+    if (!res.ok) {
+      console.warn(`Neon HTTP SQL response not ok: ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    return data.rows;
+  } catch (err) {
+    console.error("Neon HTTP SQL execution failed:", err);
+    return null;
+  }
+}
 
 async function kvExecute(command: any[]): Promise<any> {
   if (!isKVEnabled) return null;
@@ -67,6 +107,22 @@ async function kvExecute(command: any[]): Promise<any> {
 }
 
 async function readDb(): Promise<Schema> {
+  // 1. Neon PostgreSQL (Primary cloud persistence)
+  if (isNeonEnabled) {
+    try {
+      const rows = await neonQuery(`SELECT value FROM store_kv WHERE key = $1`, [KV_KEY]);
+      if (rows && rows.length > 0 && rows[0].value) {
+        return rows[0].value;
+      }
+      // Initialize table if empty
+      await writeDb(defaultSchema);
+      return defaultSchema;
+    } catch (err) {
+      console.error("Neon DB read failed, falling back:", err);
+    }
+  }
+
+  // 2. Vercel KV fallback
   if (isKVEnabled) {
     try {
       const result = await kvExecute(["GET", KV_KEY]);
@@ -80,36 +136,50 @@ async function readDb(): Promise<Schema> {
       console.error("Vercel KV read failed, using default schema:", err);
       return defaultSchema;
     }
-  } else {
-    // Local filesystem fallback
-    try {
-      if (!fs.existsSync(DB_PATH)) {
-        fs.writeFileSync(DB_PATH, JSON.stringify(defaultSchema, null, 2), 'utf-8');
-        return defaultSchema;
-      }
-      const raw = fs.readFileSync(DB_PATH, 'utf-8');
-      return JSON.parse(raw);
-    } catch (err) {
-      console.error("Local DB read failed, using default schema:", err);
+  }
+
+  // 3. Local filesystem fallback
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      fs.writeFileSync(DB_PATH, JSON.stringify(defaultSchema, null, 2), 'utf-8');
       return defaultSchema;
     }
+    const raw = fs.readFileSync(DB_PATH, 'utf-8');
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Local DB read failed, using default schema:", err);
+    return defaultSchema;
   }
 }
 
 async function writeDb(data: Schema): Promise<void> {
+  // 1. Neon PostgreSQL
+  if (isNeonEnabled) {
+    try {
+      await neonQuery(
+        `INSERT INTO store_kv (key, value, updated_at) VALUES ($1, $2::jsonb, NOW()) 
+         ON CONFLICT (key) DO UPDATE SET value = $2::jsonb, updated_at = NOW()`,
+        [KV_KEY, JSON.stringify(data)]
+      );
+    } catch (err) {
+      console.error("Neon DB write failed:", err);
+    }
+  }
+
+  // 2. Vercel KV
   if (isKVEnabled) {
     try {
       await kvExecute(["SET", KV_KEY, JSON.stringify(data)]);
     } catch (err) {
       console.error("Vercel KV write failed:", err);
     }
-  } else {
-    // Local filesystem fallback
-    try {
-      fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
-    } catch (err) {
-      console.error("Local DB write failed:", err);
-    }
+  }
+
+  // 3. Local filesystem fallback (always write locally if file system available)
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    // Expected to silently ignore if in readonly lambda environment
   }
 }
 
@@ -131,6 +201,8 @@ export function sanitizeOrder(o: any): Order {
       amount: 0,
       status: 'pending',
       paymentId: '',
+      isPaid: false,
+      pickupCode: `KP${Math.floor(1000 + Math.random() * 9000)}`,
       source: 'web',
       assignedPrinterId: '',
       createdAt: new Date().toISOString(),
@@ -153,7 +225,11 @@ export function sanitizeOrder(o: any): Order {
     orientation: o.orientation === 'landscape' ? 'landscape' : 'portrait',
     amount: typeof o.amount === 'number' && !isNaN(o.amount) ? o.amount : Number(o.amount) || 0,
     status: typeof o.status === 'string' && o.status ? o.status : 'pending',
+    paymentMethod: o.paymentMethod === 'cash' ? 'cash' : 'online',
     paymentId: typeof o.paymentId === 'string' ? o.paymentId : '',
+    isPaid: typeof o.isPaid === 'boolean' ? o.isPaid : false,
+    pickupCode: typeof o.pickupCode === 'string' && o.pickupCode ? o.pickupCode : `KP${Math.floor(1000 + Math.random() * 9000)}`,
+    couponCode: typeof o.couponCode === 'string' ? o.couponCode : undefined,
     source: o.source === 'whatsapp' ? 'whatsapp' : 'web',
     assignedPrinterId: typeof o.assignedPrinterId === 'string' ? o.assignedPrinterId : '',
     createdAt: typeof o.createdAt === 'string' && o.createdAt ? o.createdAt : new Date().toISOString(),

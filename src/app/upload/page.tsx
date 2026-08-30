@@ -232,6 +232,14 @@ export default function UploadPage() {
         return;
       }
 
+      if (data.order) {
+        try {
+          localStorage.setItem('lastPlacedOrder', JSON.stringify(data.order));
+          const existing = JSON.parse(localStorage.getItem('myOrders') || '[]');
+          localStorage.setItem('myOrders', JSON.stringify([data.order, ...existing.filter((x: any) => x.id !== data.order.id)]));
+        } catch (e) {}
+      }
+
       // If Cash Payment chosen, bypass Razorpay checkout modal
       if (paymentMethod === 'cash') {
         setUploading(false);

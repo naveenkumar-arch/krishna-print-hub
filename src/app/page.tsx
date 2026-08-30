@@ -387,6 +387,14 @@ export default function LandingPage() {
         return;
       }
 
+      if (data.order) {
+        try {
+          localStorage.setItem('lastPlacedOrder', JSON.stringify(data.order));
+          const existing = JSON.parse(localStorage.getItem('myOrders') || '[]');
+          localStorage.setItem('myOrders', JSON.stringify([data.order, ...existing.filter((x: any) => x.id !== data.order.id)]));
+        } catch (e) {}
+      }
+
       if (paymentMethod === 'cash') {
         setTimeout(() => {
           setUploading(false);

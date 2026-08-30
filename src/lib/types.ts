@@ -21,6 +21,9 @@ export interface Order {
   status: OrderStatus;
   source: 'web' | 'whatsapp';
   paymentMethod?: 'online' | 'cash';
+  paymentId?: string;       // Razorpay payment ID after successful payment
+  isPaid?: boolean;          // Whether payment has been confirmed
+  couponCode?: string;       // Applied coupon code (if any)
   createdAt: string;
   updatedAt: string;
   pickupCode: string;

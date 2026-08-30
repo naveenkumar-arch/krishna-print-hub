@@ -854,8 +854,8 @@ export default function LandingPage() {
 
       {/* CONFIGURE DIALOG MODAL */}
       {showConfig && selectedFile && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl border border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto py-4 px-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl border border-slate-200 my-auto">
             <div className="bg-brand-600 text-white p-4 flex items-center justify-between">
               <h3 className="font-bold text-sm">Configure Print Options</h3>
               <button onClick={() => setShowConfig(false)} className="text-white/80 hover:text-white text-xs font-semibold">Cancel</button>

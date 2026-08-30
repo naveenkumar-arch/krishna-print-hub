@@ -361,8 +361,8 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-white border-b border-slate-200">
+    <div className="h-screen bg-slate-50 flex flex-col overflow-hidden">
+      <header className="bg-white border-b border-slate-200 flex-shrink-0">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link href="/" className="text-slate-500 hover:text-slate-800 flex items-center gap-1">
             <ArrowLeft size={16} />
@@ -373,8 +373,9 @@ export default function UploadPage() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-lg mx-auto w-full px-4 py-8">
-        {!selectedFile ? (
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-lg mx-auto w-full px-4 pt-8 pb-12">
+          {!selectedFile ? (
           <div className="card-premium bg-white p-6 space-y-6">
             <div className="text-center">
               <h1 className="text-xl font-black text-slate-900 tracking-tight">Upload Your Document</h1>
@@ -395,7 +396,7 @@ export default function UploadPage() {
             </div>
           </div>
         ) : (
-          <div className="card-premium bg-white overflow-hidden">
+          <div className="card-premium bg-white">
             <div className="bg-brand-600 text-white p-4 flex justify-between items-center">
               <h2 className="font-bold text-sm">Print Configuration</h2>
               <button 
@@ -664,6 +665,7 @@ export default function UploadPage() {
             </form>
           </div>
         )}
+        </div>
       </main>
     </div>
   );

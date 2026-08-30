@@ -30,8 +30,7 @@ body {
 }
 
 .card-premium:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.05), 0 4px 6px -2px rgba(124, 58, 237, 0.03);
+  box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.08), 0 4px 6px -2px rgba(124, 58, 237, 0.04);
 }
 
 /* Interactive elements */

@@ -15,7 +15,7 @@ const path = require('path');
 
 const PORT = 4000;
 const POLL_INTERVAL = 4000; // Poll for jobs every 4 seconds
-let BACKEND_URL = process.env.BACKEND_URL || 'https://krishna-students-print-hub.vercel.app';
+let BACKEND_URL = process.env.BACKEND_URL || 'https://krishna-students-print-hub-one.vercel.app';
 let AUTH_TOKEN = 'KP-DEMO-TOKEN-9988';
 
 try {

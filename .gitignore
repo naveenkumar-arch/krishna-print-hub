@@ -15,14 +15,11 @@ dist/
 # Windows system files
 desktop.ini
 
-# Build artifacts in root and public downloads
-/KrishnaPrintAgent.jar
-/KrishnaPrintAgentSetup.exe
-public/downloads/*.exe
-public/downloads/*.jar
+# Build artifacts
 *.class
 manifest.txt
 default_config.properties
+!public/downloads/KrishnaPrintAgent.jar
 
 .vercel
 .env*

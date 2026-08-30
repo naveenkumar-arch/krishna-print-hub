@@ -188,7 +188,7 @@ public class PrintAgent {
         panel.add(testBtn);
 
         testBtn.addActionListener(e -> {
-            String url = BASE_URL;
+            String url = localModeRadio.isSelected() ? "http://localhost:3000" : "https://krishna-students-print-hub-one.vercel.app";
             String token = new String(tokenField.getPassword()).trim();
             if (url.endsWith("/")) {
                 url = url.substring(0, url.length() - 1);
@@ -202,12 +202,12 @@ public class PrintAgent {
                 con.setReadTimeout(5000);
                 int code = con.getResponseCode();
                 if (code == 200) {
-                    JOptionPane.showMessageDialog(frame, "âœ“ Connected successfully to Vercel Server!", "Connection Test", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(frame, "✓ Connected successfully to Vercel Server!", "Connection Test", JOptionPane.INFORMATION_MESSAGE);
                 } else {
-                    JOptionPane.showMessageDialog(frame, "âœ— Server returned response code: " + code, "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(frame, "✗ Server returned response code: " + code, "Connection Failed", JOptionPane.ERROR_MESSAGE);
                 }
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(frame, "âœ— Could not reach server: " + ex.getMessage(), "Connection Failed", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "✗ Could not reach server: " + ex.getMessage(), "Connection Failed", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -236,13 +236,13 @@ public class PrintAgent {
                     writer.write("Spool test page dispatched successfully.\n");
                 }
                 printToWindowsDevice(tempFile, selectedPrn, null);
-                JOptionPane.showMessageDialog(frame, "âœ“ Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "✓ Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
                 
                 new Thread(() -> {
                     try { Thread.sleep(5000); tempFile.delete(); } catch(Exception ignored) {}
                 }).start();
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(frame, "âœ— Spool failed: " + ex.getMessage(), "Printer Test", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "✗ Spool failed: " + ex.getMessage(), "Printer Test", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -265,7 +265,7 @@ public class PrintAgent {
             if (localModeRadio.isSelected()) {
                 BASE_URL = "http://localhost:3000";
             } else {
-                BASE_URL = "https://krishna-students-print-hub.vercel.app";
+                BASE_URL = "https://krishna-students-print-hub-one.vercel.app";
             }
 
             // Save variables

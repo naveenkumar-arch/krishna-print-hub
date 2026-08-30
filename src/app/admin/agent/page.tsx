@@ -18,7 +18,7 @@ export default function PrintAgentMonitorPage() {
   const [localPrinters, setLocalPrinters] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [webOrigin, setWebOrigin] = useState('https://krishna-students-print-hub.vercel.app');
+  const [webOrigin, setWebOrigin] = useState('https://krishna-students-print-hub-one.vercel.app');
   
   const [logs, setLogs] = useState<string[]>([
     "INFO  [10:00:01] Print Agent Started (v1.0.2)",

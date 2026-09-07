@@ -689,6 +689,7 @@ public class PrintAgent {
             }
         } catch (Exception e) {
             System.err.println("Printing error on job #" + orderId + ": " + e.getMessage());
+            e.printStackTrace();
             updateOrderStatus(orderId, "error");
         }
     }
@@ -825,14 +826,27 @@ public class PrintAgent {
         String localPhysicalFallback = null;
         String localAnyFallback = null;
 
+        // Priority 0: Explicit default printer configured in agent settings
+        if (DEFAULT_PRINTER != null && !DEFAULT_PRINTER.trim().isEmpty()) {
+            for (String raw : locals) {
+                String pName = raw.split("\\|")[0].trim();
+                if (pName.equalsIgnoreCase(DEFAULT_PRINTER.trim())) {
+                    return pName;
+                }
+            }
+        }
+
         for (String raw : locals) {
             String pName = raw.split("\\|")[0].trim();
             if (!pName.isEmpty()) {
                 localNames.add(pName.toLowerCase());
-                if (localAnyFallback == null) {
+                String pLower = pName.toLowerCase();
+                // Prefer Microsoft Print to PDF for fallback when no physical printer exists
+                if (pLower.contains("microsoft print to pdf")) {
+                    localAnyFallback = pName;
+                } else if (localAnyFallback == null) {
                     localAnyFallback = pName;
                 }
-                String pLower = pName.toLowerCase();
                 if (localPhysicalFallback == null && 
                     !pLower.contains("microsoft print to pdf") && 
                     !pLower.contains("fax") && 
@@ -1025,6 +1039,27 @@ public class PrintAgent {
             }
         }
 
+        // FIX: "Microsoft Print to PDF" and virtual printers open Save-As / UI dialogs that block SumatraPDF forever.
+        // Instead, convert PDF -> PDF silently by copying to a known output folder.
+        if (printerName != null && (printerName.trim().equalsIgnoreCase("Microsoft Print to PDF") ||
+                                    printerName.toLowerCase().contains("pdf") ||
+                                    printerName.toLowerCase().contains("onenote") ||
+                                    printerName.toLowerCase().contains("xps") ||
+                                    printerName.toLowerCase().contains("fax"))) {
+            String orderId = orderParams != null ? orderParams.get("id") : "unknown";
+            if (orderId == null || orderId.trim().isEmpty()) orderId = "job_" + System.currentTimeMillis();
+            File outputDir = new File(System.getProperty("user.home") + File.separator + "Desktop" + File.separator + "PrintedJobs");
+            outputDir.mkdirs();
+            String cleanName = ticketFile.getName().replaceAll("[^a-zA-Z0-9._-]", "_");
+            File outputPdf = new File(outputDir, orderId + "_" + cleanName);
+            System.out.println("[PDF Output] Saving printed file to: " + outputPdf.getAbsolutePath());
+            java.nio.file.Files.copy(ticketFile.toPath(), outputPdf.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("[PDF Output] Document saved successfully to Desktop/PrintedJobs/");
+            // Show tray notification so user knows a file is ready
+            toastIcon("Print Job Ready", "Saved to Desktop\\PrintedJobs\\" + outputPdf.getName());
+            return;
+        }
+
         ensurePrinterUtility();
 
         File helperExe = getPrinterUtilityFile();
@@ -1133,7 +1168,7 @@ public class PrintAgent {
             int exitCode = p.waitFor();
             String outStr = output.toString().toLowerCase();
             if (exitCode != 0 || outStr.contains("error:") || outStr.contains("couldn't open file")) {
-                throw new IOException("SumatraPDF failed with exit code " + exitCode + ". Output: " + output.toString());
+                throw new IOException("SumatraPDF failed (Exit Code: " + exitCode + "). Output: " + output.toString());
             }
         } else {
             // For PDF files: NEVER use Out-Printer or Start-Process -Verb PrintTo as it prints raw binary bytecode!
@@ -1288,6 +1323,13 @@ public class PrintAgent {
             }
 
             int code = con.getResponseCode();
+            try (InputStream is = (code >= 200 && code < 300) ? con.getInputStream() : con.getErrorStream()) {
+                if (is != null) {
+                    byte[] b = new byte[1024];
+                    while (is.read(b) != -1) {}
+                }
+            } catch (Exception ignored) {}
+            con.disconnect();
             System.out.println("Order #" + id + " status set to: " + status + " (Response: " + code + ")");
         } catch (Exception e) {
             System.err.println("Failed to update status for order #" + id + ": " + e.getMessage());

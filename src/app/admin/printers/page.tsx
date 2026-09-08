@@ -257,6 +257,8 @@ export default function AdminPrintersPage() {
           customerName: "System Diagnostics",
           customerPhone: "9100000000",
           fileName: "TEST_PAGE_PRINT.pdf",
+          fileUrl: "/sample_valid.pdf",
+          assignedPrinterId: id,
           fileSize: 0.1,
           pages: 1,
           copies: 1,

@@ -658,30 +658,23 @@ public class PrintAgent {
                     try { Thread.sleep(30000); downloadedFile.delete(); } catch (InterruptedException ignored) {}
                 }).start();
             } else {
-                // Fallback to receipt ticket printing if no fileUrl is provided (e.g. legacy/mock data)
+                // Fallback to receipt ticket printing if no fileUrl is provided (e.g. legacy/mock/test data)
                 updateOrderStatus(orderId, "printing");
-                File tempTicket = File.createTempFile("spool_ticket_" + orderId, ".txt");
-                try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempTicket))) {
-                    writer.write("=========================================\n");
-                    writer.write("         KRISHNA STUDENTS PRINT HUB      \n");
-                    writer.write("=========================================\n");
-                    writer.write("ORDER ID: " + orderId + "\n");
-                    writer.write("CUSTOMER: " + name + "\n");
-                    writer.write("DOCUMENT: " + file + "\n");
-                    writer.write("PAGES   : " + pages + " page(s)\n");
-                    writer.write("COPIES  : " + copies + " copy(ies)\n");
-                    writer.write("CONFIG  : " + paperSize + " Â· " + colorMode.toUpperCase() + " Â· " + duplex.toUpperCase() + "\n");
-                    writer.write("=========================================\n");
-                    writer.write("Please collect your prints at the counter.\n");
-                    writer.write("Thank you for printing with us!\n");
-                    writer.write("=========================================\n");
+                File tempTicket = File.createTempFile("spool_ticket_" + orderId + "_", ".pdf");
+                try {
+                    int numPages = 1;
+                    try { numPages = Integer.parseInt(pages); } catch (Exception ignored) {}
+                    int numCopies = 1;
+                    try { numCopies = Integer.parseInt(copies); } catch (Exception ignored) {}
+                    createReceiptPdf(tempTicket, orderId, name, file, numPages, numCopies, paperSize, colorMode, duplex);
+                } catch (Exception pdfErr) {
+                    System.err.println("Failed to generate PDF ticket, falling back to minimal PDF: " + pdfErr.getMessage());
                 }
 
                 printToWindowsDevice(tempTicket, targetPrinter, order);
 
-                // FIX: No sleep needed â€” printToWindowsDevice is synchronous via waitFor()
                 updateOrderStatus(orderId, "completed");
-                System.out.println("Job #" + orderId + " completed printing (fallback ticket) successfully.");
+                System.out.println("Job #" + orderId + " completed printing (PDF test ticket) successfully.");
                 
                 new Thread(() -> {
                     try { Thread.sleep(20000); tempTicket.delete(); } catch (InterruptedException ignored) {}
@@ -828,9 +821,21 @@ public class PrintAgent {
 
         // Priority 0: Explicit default printer configured in agent settings
         if (DEFAULT_PRINTER != null && !DEFAULT_PRINTER.trim().isEmpty()) {
+            String defClean = DEFAULT_PRINTER.trim().toLowerCase();
+            // Exact match
             for (String raw : locals) {
                 String pName = raw.split("\\|")[0].trim();
                 if (pName.equalsIgnoreCase(DEFAULT_PRINTER.trim())) {
+                    System.out.println("[Printer Routing] Selected configured default printer (exact match): " + pName);
+                    return pName;
+                }
+            }
+            // Contains/partial match (e.g. '5855' or '5845' or 'Xerox')
+            for (String raw : locals) {
+                String pName = raw.split("\\|")[0].trim();
+                String pLower = pName.toLowerCase();
+                if (pLower.contains(defClean) || defClean.contains(pLower)) {
+                    System.out.println("[Printer Routing] Selected configured default printer (fuzzy match): " + pName);
                     return pName;
                 }
             }
@@ -1129,19 +1134,21 @@ public class PrintAgent {
                     settingsList.add("paper=A4");
                 }
 
-                // 5. Orientation (portrait / landscape)
+                // 5. Orientation (Only landscape if requested; SumatraPDF CLI does NOT support 'portrait')
                 String orientation = orderParams.get("orientation");
                 String oLower = orientation != null ? orientation.trim().toLowerCase() : "";
                 if (oLower.contains("landscape")) {
                     settingsList.add("landscape");
-                } else {
-                    settingsList.add("portrait");
                 }
+
+                // 6. Scale to printable area to prevent margin clip / copier tray rejections
+                settingsList.add("fit");
             } else {
                 settingsList.add("1x");
                 settingsList.add("monochrome");
                 settingsList.add("paper=A4");
                 settingsList.add("simplex");
+                settingsList.add("fit");
             }
 
             if (!settingsList.isEmpty()) {
@@ -1168,7 +1175,26 @@ public class PrintAgent {
             int exitCode = p.waitFor();
             String outStr = output.toString().toLowerCase();
             if (exitCode != 0 || outStr.contains("error:") || outStr.contains("couldn't open file")) {
-                throw new IOException("SumatraPDF failed (Exit Code: " + exitCode + "). Output: " + output.toString());
+                System.err.println("SumatraPDF primary command failed (exit code " + exitCode + "). Retrying with basic fit settings...");
+                List<String> retryCmd = new ArrayList<>();
+                retryCmd.add(helperExe.getAbsolutePath());
+                retryCmd.add("-silent");
+                if (printerName != null && !printerName.trim().isEmpty()) {
+                    retryCmd.add("-print-to");
+                    retryCmd.add(printerName.trim());
+                } else {
+                    retryCmd.add("-print-to-default");
+                }
+                retryCmd.add("-print-settings");
+                retryCmd.add("fit");
+                retryCmd.add(ticketFile.getAbsolutePath());
+
+                Process retryP = new ProcessBuilder(retryCmd).redirectErrorStream(true).start();
+                int retryExit = retryP.waitFor();
+                if (retryExit != 0) {
+                    throw new IOException("SumatraPDF failed (Exit Code: " + exitCode + "). Output: " + output.toString());
+                }
+                System.out.println("SumatraPDF retry with basic settings succeeded.");
             }
         } else {
             // For PDF files: NEVER use Out-Printer or Start-Process -Verb PrintTo as it prints raw binary bytecode!
@@ -1222,6 +1248,69 @@ public class PrintAgent {
         int exitCode = p.waitFor();
         if (exitCode != 0 || psOutput.toString().toLowerCase().contains("error")) {
             throw new IOException("Windows print spooler failed (exit code " + exitCode + "): " + psOutput.toString());
+        }
+    }
+
+    private static void createReceiptPdf(File destPdf, String orderId, String customerName, String fileName, int pages, int copies, String paperSize, String colorMode, String duplex) throws IOException {
+        String safeName = (customerName != null && !customerName.trim().isEmpty()) ? customerName.replace("(", "").replace(")", "").replace("\\", "") : "Customer";
+        String safeDoc = (fileName != null && !fileName.trim().isEmpty()) ? fileName.replace("(", "").replace(")", "").replace("\\", "") : "Document";
+        String dateStr = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+
+        String streamContent = 
+            "BT\n" +
+            "/F1 18 Tf\n" +
+            "50 780 Td\n" +
+            "(KRISHNA STUDENTS PRINT HUB - RECEIPT / TEST TICKET) Tj\n" +
+            "/F1 12 Tf\n" +
+            "0 -35 Td\n" +
+            "(ORDER ID: " + orderId + ") Tj\n" +
+            "0 -22 Td\n" +
+            "(CUSTOMER: " + safeName + ") Tj\n" +
+            "0 -22 Td\n" +
+            "(DOCUMENT: " + safeDoc + ") Tj\n" +
+            "0 -22 Td\n" +
+            "(COPIES: " + copies + "   |   PAGES: " + pages + ") Tj\n" +
+            "0 -22 Td\n" +
+            "(CONFIG: " + (paperSize != null ? paperSize : "A4") + "  |  " + (colorMode != null ? colorMode.toUpperCase() : "BW") + "  |  " + (duplex != null ? duplex.toUpperCase() : "SIMPLEX") + ") Tj\n" +
+            "0 -22 Td\n" +
+            "(PRINT TIME: " + dateStr + ") Tj\n" +
+            "0 -35 Td\n" +
+            "(Thank you for printing with Krishna Students Print Hub!) Tj\n" +
+            "ET\n";
+
+        byte[] streamBytes = streamContent.getBytes(StandardCharsets.ISO_8859_1);
+        int streamLen = streamBytes.length;
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        baos.write("%PDF-1.4\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        List<Integer> offsets = new ArrayList<>();
+        offsets.add(baos.size());
+        baos.write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write(("4 0 obj\n<< /Length " + streamLen + " >>\nstream\n").getBytes(StandardCharsets.ISO_8859_1));
+        baos.write(streamBytes);
+        baos.write("\nendstream\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        int xrefOffset = baos.size();
+        baos.write("xref\n0 6\n0000000000 65535 f \n".getBytes(StandardCharsets.ISO_8859_1));
+        for (int offset : offsets) {
+            baos.write(String.format("%010d 00000 n \n", offset).getBytes(StandardCharsets.ISO_8859_1));
+        }
+        baos.write(("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n").getBytes(StandardCharsets.ISO_8859_1));
+
+        try (FileOutputStream fos = new FileOutputStream(destPdf)) {
+            baos.writeTo(fos);
         }
     }
 

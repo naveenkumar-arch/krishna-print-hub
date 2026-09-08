@@ -463,6 +463,9 @@ function spoolToWindows(filePath, jobOptions, callback) {
         settings.push(`paper=${paperSize}`);
       }
 
+      // Always fit to printable area to prevent margin clip / copier tray rejections
+      settings.push('fit');
+
       if (settings.length > 0) {
         const settingsStr = settings.join(',');
         console.log(`⚙️ [Spooler] Applying print settings: ${settingsStr}`);
@@ -481,8 +484,25 @@ function spoolToWindows(filePath, jobOptions, callback) {
       
       child.on('close', (code) => {
         if (code !== 0) {
-          console.error(`❌ [Spooler] SumatraPDF failed with code ${code}. Output: ${outData}`);
-          callback(new Error(`SumatraPDF failed with code ${code}`));
+          console.warn(`⚠️ [Spooler] Primary SumatraPDF failed (code ${code}). Retrying with basic fit settings...`);
+          const retryArgs = [];
+          if (assignedTargetPrinter) {
+            retryArgs.push('-print-to', assignedTargetPrinter);
+          } else {
+            retryArgs.push('-print-to-default');
+          }
+          retryArgs.push('-silent', '-print-settings', 'fit', filePath);
+
+          const retryChild = spawn(helperExe, retryArgs);
+          retryChild.on('close', (retryCode) => {
+            if (retryCode !== 0) {
+              console.error(`❌ [Spooler] SumatraPDF retry failed with code ${retryCode}.`);
+              callback(new Error(`SumatraPDF failed with code ${retryCode}`));
+            } else {
+              console.log(`🟢 [Spooler] Physical spool successfully queued via SumatraPDF retry!`);
+              callback(null);
+            }
+          });
         } else {
           console.log(`🟢 [Spooler] Physical spool successfully queued via SumatraPDF!`);
           callback(null);

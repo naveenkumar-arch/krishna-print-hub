@@ -1,5 +1,7 @@
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -647,15 +649,49 @@ public class PrintAgent {
                     return;
                 }
                 
-                printToWindowsDevice(downloadedFile, targetPrinter, order);
+                File fileToPrint = downloadedFile;
+                File tempConverted = null;
+                String lowerExt = ext.toLowerCase();
+                boolean isImage = lowerExt.endsWith(".png") || lowerExt.endsWith(".jpg") || 
+                                  lowerExt.endsWith(".jpeg") || lowerExt.endsWith(".webp") || 
+                                  lowerExt.endsWith(".bmp") || lowerExt.endsWith(".gif");
+                boolean isText = lowerExt.endsWith(".txt") || lowerExt.endsWith(".csv") || 
+                                 lowerExt.endsWith(".md") || lowerExt.endsWith(".log");
+
+                if (isImage) {
+                    try {
+                        System.out.println("Converting image (" + ext + ") to standard printable A4 PDF vector...");
+                        tempConverted = File.createTempFile("spool_img_" + orderId + "_", ".pdf");
+                        convertImageToPdf(downloadedFile, tempConverted);
+                        fileToPrint = tempConverted;
+                        System.out.println("Image successfully converted to printable PDF: " + tempConverted.getName());
+                    } catch (Exception imgErr) {
+                        System.err.println("Image to PDF conversion issue: " + imgErr.getMessage() + ". Using direct spooling.");
+                    }
+                } else if (isText) {
+                    try {
+                        System.out.println("Converting text file (" + ext + ") to standard printable A4 PDF...");
+                        tempConverted = File.createTempFile("spool_txt_" + orderId + "_", ".pdf");
+                        convertTextToPdf(downloadedFile, tempConverted, name, file, orderId);
+                        fileToPrint = tempConverted;
+                        System.out.println("Text file successfully converted to printable PDF: " + tempConverted.getName());
+                    } catch (Exception txtErr) {
+                        System.err.println("Text to PDF conversion issue: " + txtErr.getMessage());
+                    }
+                }
+
+                printToWindowsDevice(fileToPrint, targetPrinter, order);
                 
-                // FIX: No longer block polling thread with Thread.sleep â€” mark completed immediately
-                // after SumatraPDF/spooler call returns (it is already synchronous via waitFor())
                 updateOrderStatus(orderId, "completed");
                 System.out.println("Job #" + orderId + " completed printing successfully.");
                 
+                final File finalTempConverted = tempConverted;
                 new Thread(() -> {
-                    try { Thread.sleep(30000); downloadedFile.delete(); } catch (InterruptedException ignored) {}
+                    try { 
+                        Thread.sleep(30000); 
+                        downloadedFile.delete(); 
+                        if (finalTempConverted != null) finalTempConverted.delete();
+                    } catch (InterruptedException ignored) {}
                 }).start();
             } else {
                 // Fallback to receipt ticket printing if no fileUrl is provided (e.g. legacy/mock/test data)
@@ -1310,6 +1346,137 @@ public class PrintAgent {
         baos.write(("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n").getBytes(StandardCharsets.ISO_8859_1));
 
         try (FileOutputStream fos = new FileOutputStream(destPdf)) {
+            baos.writeTo(fos);
+        }
+    }
+
+    private static void convertImageToPdf(File imageFile, File outputPdf) throws Exception {
+        BufferedImage img = ImageIO.read(imageFile);
+        if (img == null) {
+            throw new IOException("ImageIO could not decode image format: " + imageFile.getName());
+        }
+        int imgW = img.getWidth();
+        int imgH = img.getHeight();
+
+        // Convert to standard RGB to ensure compatibility with JPEG encoding and printer PostScript
+        BufferedImage rgbImg = new BufferedImage(imgW, imgH, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = rgbImg.createGraphics();
+        g.setColor(Color.WHITE);
+        g.fillRect(0, 0, imgW, imgH);
+        g.drawImage(img, 0, 0, null);
+        g.dispose();
+
+        ByteArrayOutputStream jpegBaos = new ByteArrayOutputStream();
+        ImageIO.write(rgbImg, "jpeg", jpegBaos);
+        byte[] jpegBytes = jpegBaos.toByteArray();
+        int jpegLen = jpegBytes.length;
+
+        // A4 page: 595 x 842 points
+        float pageW = 595.0f;
+        float pageH = 842.0f;
+        float margin = 20.0f;
+        float maxW = pageW - (margin * 2);
+        float maxH = pageH - (margin * 2);
+
+        float scale = Math.min(maxW / imgW, maxH / imgH);
+        float renderW = imgW * scale;
+        float renderH = imgH * scale;
+        float posX = (pageW - renderW) / 2.0f;
+        float posY = (pageH - renderH) / 2.0f;
+
+        String contentStream = String.format(Locale.US, "q %.2f 0 0 %.2f %.2f %.2f cm /Im1 Do Q\n", renderW, renderH, posX, posY);
+        byte[] contentBytes = contentStream.getBytes(StandardCharsets.ISO_8859_1);
+
+        ByteArrayOutputStream pdfBaos = new ByteArrayOutputStream();
+        pdfBaos.write("%PDF-1.4\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        List<Integer> offsets = new ArrayList<>();
+        offsets.add(pdfBaos.size());
+        pdfBaos.write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(pdfBaos.size());
+        pdfBaos.write("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(pdfBaos.size());
+        pdfBaos.write("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /Im1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(pdfBaos.size());
+        pdfBaos.write(("4 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n").getBytes(StandardCharsets.ISO_8859_1));
+        pdfBaos.write(contentBytes);
+        pdfBaos.write("\nendstream\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(pdfBaos.size());
+        String imgObjHead = String.format(Locale.US, "5 0 obj\n<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n", imgW, imgH, jpegLen);
+        pdfBaos.write(imgObjHead.getBytes(StandardCharsets.ISO_8859_1));
+        pdfBaos.write(jpegBytes);
+        pdfBaos.write("\nendstream\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        int xrefOffset = pdfBaos.size();
+        pdfBaos.write("xref\n0 6\n0000000000 65535 f \n".getBytes(StandardCharsets.ISO_8859_1));
+        for (int offset : offsets) {
+            pdfBaos.write(String.format("%010d 00000 n \n", offset).getBytes(StandardCharsets.ISO_8859_1));
+        }
+        pdfBaos.write(("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n").getBytes(StandardCharsets.ISO_8859_1));
+
+        try (FileOutputStream fos = new FileOutputStream(outputPdf)) {
+            pdfBaos.writeTo(fos);
+        }
+    }
+
+    private static void convertTextToPdf(File textFile, File outputPdf, String customerName, String docName, String orderId) throws IOException {
+        List<String> lines = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(textFile), StandardCharsets.UTF_8))) {
+            String l;
+            while ((l = br.readLine()) != null && lines.size() < 200) {
+                lines.add(l.replace("(", "[").replace(")", "]").replace("\\", "/"));
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("BT\n/F1 14 Tf\n50 780 Td\n(KRISHNA STUDENTS PRINT HUB - ").append(docName.replace("(", "").replace(")", "")).append(") Tj\n");
+        sb.append("/F1 10 Tf\n0 -25 Td\n(Order: ").append(orderId).append(" | Date: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date())).append(") Tj\n");
+        sb.append("0 -20 Td\n(--------------------------------------------------------------------------------) Tj\n");
+        
+        int yOffset = -15;
+        for (int i = 0; i < Math.min(lines.size(), 45); i++) {
+            String line = lines.get(i);
+            if (line.length() > 85) line = line.substring(0, 85);
+            sb.append("0 ").append(yOffset).append(" Td\n(").append(line).append(") Tj\n");
+        }
+        sb.append("ET\n");
+
+        byte[] streamBytes = sb.toString().getBytes(StandardCharsets.ISO_8859_1);
+        int streamLen = streamBytes.length;
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        baos.write("%PDF-1.4\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        List<Integer> offsets = new ArrayList<>();
+        offsets.add(baos.size());
+        baos.write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write(("4 0 obj\n<< /Length " + streamLen + " >>\nstream\n").getBytes(StandardCharsets.ISO_8859_1));
+        baos.write(streamBytes);
+        baos.write("\nendstream\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        offsets.add(baos.size());
+        baos.write("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n".getBytes(StandardCharsets.ISO_8859_1));
+
+        int xrefOffset = baos.size();
+        baos.write("xref\n0 6\n0000000000 65535 f \n".getBytes(StandardCharsets.ISO_8859_1));
+        for (int offset : offsets) {
+            baos.write(String.format("%010d 00000 n \n", offset).getBytes(StandardCharsets.ISO_8859_1));
+        }
+        baos.write(("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n").getBytes(StandardCharsets.ISO_8859_1));
+
+        try (FileOutputStream fos = new FileOutputStream(outputPdf)) {
             baos.writeTo(fos);
         }
     }

@@ -27,6 +27,8 @@ public class PrintAgent {
     private static boolean hasLoggedPrinters = false;
     // FIX: Track in-progress job IDs to prevent double-printing across poll cycles
     private static final Set<String> inProgressJobs = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    // FIX: Lock spooler invocations so concurrent threads don't collide in Windows spooler
+    private static final Object SPOOL_LOCK = new Object();
 
     private static CustomPrintStream customOutStream;
 
@@ -830,21 +832,24 @@ public class PrintAgent {
             }
         }
 
-        // Validate downloaded file content to prevent printing HTML error pages on paper
-        if (destination.exists() && destination.length() > 0) {
-            byte[] header = new byte[Math.min(500, (int) destination.length())];
-            try (FileInputStream fis = new FileInputStream(destination)) {
-                int readBytes = fis.read(header);
-                String headStr = new String(header, 0, readBytes, StandardCharsets.UTF_8).toLowerCase();
-                
-                if (headStr.contains("<!doctype html") || headStr.contains("<html") || headStr.contains("404 not found")) {
-                    destination.delete();
-                    throw new IOException("The file URL returned an HTML web page (e.g. 404 error or landing page) instead of the actual document file: " + fullUrl);
-                }
-                
-                if (destination.getName().toLowerCase().endsWith(".pdf") && !headStr.startsWith("%pdf")) {
-                    System.err.println("[WARNING] Downloaded PDF header does not start with '%PDF'. Header preview: " + headStr.substring(0, Math.min(30, headStr.length())));
-                }
+        // Validate downloaded file content to prevent empty files or HTML error pages
+        if (!destination.exists() || destination.length() == 0) {
+            if (destination.exists()) destination.delete();
+            throw new IOException("Downloaded file is empty (0 bytes) from: " + fullUrl);
+        }
+
+        byte[] header = new byte[Math.min(500, (int) destination.length())];
+        try (FileInputStream fis = new FileInputStream(destination)) {
+            int readBytes = fis.read(header);
+            String headStr = new String(header, 0, readBytes, StandardCharsets.UTF_8).toLowerCase();
+            
+            if (headStr.contains("<!doctype html") || headStr.contains("<html") || headStr.contains("404 not found")) {
+                destination.delete();
+                throw new IOException("The file URL returned an HTML web page (e.g. 404 error or landing page) instead of the actual document file: " + fullUrl);
+            }
+            
+            if (destination.getName().toLowerCase().endsWith(".pdf") && !headStr.startsWith("%pdf")) {
+                System.err.println("[WARNING] Downloaded PDF header does not start with '%PDF'. Header preview: " + headStr.substring(0, Math.min(30, headStr.length())));
             }
         }
     }
@@ -1197,40 +1202,51 @@ public class PrintAgent {
             cmd.add(ticketFile.getAbsolutePath());
             
             ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    System.out.println("SumatraPDF: " + line);
-                    output.append(line).append("\n");
+            synchronized (SPOOL_LOCK) {
+                Process p = pb.start();
+                
+                StringBuilder output = new StringBuilder();
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        System.out.println("SumatraPDF: " + line);
+                        output.append(line).append("\n");
+                    }
                 }
-            }
-            int exitCode = p.waitFor();
-            String outStr = output.toString().toLowerCase();
-            if (exitCode != 0 || outStr.contains("error:") || outStr.contains("couldn't open file")) {
-                System.err.println("SumatraPDF primary command failed (exit code " + exitCode + "). Retrying with basic fit settings...");
-                List<String> retryCmd = new ArrayList<>();
-                retryCmd.add(helperExe.getAbsolutePath());
-                retryCmd.add("-silent");
-                if (printerName != null && !printerName.trim().isEmpty()) {
-                    retryCmd.add("-print-to");
-                    retryCmd.add(printerName.trim());
-                } else {
-                    retryCmd.add("-print-to-default");
+                boolean finished = p.waitFor(90, java.util.concurrent.TimeUnit.SECONDS);
+                if (!finished) {
+                    p.destroyForcibly();
+                    throw new IOException("SumatraPDF printing process timed out after 90 seconds.");
                 }
-                retryCmd.add("-print-settings");
-                retryCmd.add("fit");
-                retryCmd.add(ticketFile.getAbsolutePath());
+                int exitCode = p.exitValue();
+                String outStr = output.toString().toLowerCase();
+                if (exitCode != 0 || outStr.contains("error:") || outStr.contains("couldn't open file")) {
+                    System.err.println("SumatraPDF primary command failed (exit code " + exitCode + "). Retrying with basic fit settings...");
+                    List<String> retryCmd = new ArrayList<>();
+                    retryCmd.add(helperExe.getAbsolutePath());
+                    retryCmd.add("-silent");
+                    if (printerName != null && !printerName.trim().isEmpty()) {
+                        retryCmd.add("-print-to");
+                        retryCmd.add(printerName.trim());
+                    } else {
+                        retryCmd.add("-print-to-default");
+                    }
+                    retryCmd.add("-print-settings");
+                    retryCmd.add("fit");
+                    retryCmd.add(ticketFile.getAbsolutePath());
 
-                Process retryP = new ProcessBuilder(retryCmd).redirectErrorStream(true).start();
-                int retryExit = retryP.waitFor();
-                if (retryExit != 0) {
-                    throw new IOException("SumatraPDF failed (Exit Code: " + exitCode + "). Output: " + output.toString());
+                    Process retryP = new ProcessBuilder(retryCmd).redirectErrorStream(true).start();
+                    boolean retryFinished = retryP.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+                    if (!retryFinished) {
+                        retryP.destroyForcibly();
+                        throw new IOException("SumatraPDF retry process timed out after 60 seconds.");
+                    }
+                    int retryExit = retryP.exitValue();
+                    if (retryExit != 0) {
+                        throw new IOException("SumatraPDF failed (Exit Code: " + retryExit + "). Output: " + output.toString());
+                    }
+                    System.out.println("SumatraPDF retry with basic settings succeeded.");
                 }
-                System.out.println("SumatraPDF retry with basic settings succeeded.");
             }
         } else {
             // For PDF files: NEVER use Out-Printer or Start-Process -Verb PrintTo as it prints raw binary bytecode!
@@ -1288,8 +1304,8 @@ public class PrintAgent {
     }
 
     private static void createReceiptPdf(File destPdf, String orderId, String customerName, String fileName, int pages, int copies, String paperSize, String colorMode, String duplex) throws IOException {
-        String safeName = (customerName != null && !customerName.trim().isEmpty()) ? customerName.replace("(", "").replace(")", "").replace("\\", "") : "Customer";
-        String safeDoc = (fileName != null && !fileName.trim().isEmpty()) ? fileName.replace("(", "").replace(")", "").replace("\\", "") : "Document";
+        String safeName = (customerName != null && !customerName.trim().isEmpty()) ? customerName.replaceAll("[^\\x20-\\x7E]", " ").replace("(", "").replace(")", "").replace("\\", "") : "Customer";
+        String safeDoc = (fileName != null && !fileName.trim().isEmpty()) ? fileName.replaceAll("[^\\x20-\\x7E]", " ").replace("(", "").replace(")", "").replace("\\", "") : "Document";
         String dateStr = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
 
         String streamContent = 

@@ -287,15 +287,19 @@ function downloadDoc(fileUrl, destPath, callback) {
         fileStream.close();
         try {
           const stat = fs.statSync(destPath);
-          if (stat.size > 0) {
-            const buf = fs.readFileSync(destPath, { encoding: null });
-            const headStr = buf.slice(0, Math.min(200, buf.length)).toString('utf-8').toLowerCase();
-            if (headStr.includes('<!doctype html') || headStr.includes('<html') || headStr.includes('404 not found')) {
-              try { fs.unlinkSync(destPath); } catch(e) {}
-              return callback(new Error("URL returned an HTML web page instead of actual PDF document."));
-            }
+          if (!stat || stat.size === 0) {
+            try { fs.unlinkSync(destPath); } catch(e) {}
+            return callback(new Error("Downloaded file is empty (0 bytes)."));
           }
-        } catch(e) {}
+          const buf = fs.readFileSync(destPath, { encoding: null });
+          const headStr = buf.slice(0, Math.min(200, buf.length)).toString('utf-8').toLowerCase();
+          if (headStr.includes('<!doctype html') || headStr.includes('<html') || headStr.includes('404 not found')) {
+            try { fs.unlinkSync(destPath); } catch(e) {}
+            return callback(new Error("URL returned an HTML web page instead of actual PDF document."));
+          }
+        } catch(e) {
+          return callback(e);
+        }
         callback(null);
       });
     });

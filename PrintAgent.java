@@ -228,25 +228,42 @@ public class PrintAgent {
         testPrintBtn.addActionListener(e -> {
             String selectedPrn = (String) printerDropdown.getSelectedItem();
             try {
-                File tempFile = File.createTempFile("print_agent_test", ".txt");
-                try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
-                    writer.write("=========================================\n");
-                    writer.write("       KRISHNA PRINT AGENT TEST PAGE      \n");
-                    writer.write("=========================================\n");
-                    writer.write("Printer Name: " + selectedPrn + "\n");
-                    writer.write("Status      : Communication OK\n");
-                    writer.write("Timestamp   : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
-                    writer.write("=========================================\n");
-                    writer.write("Spool test page dispatched successfully.\n");
+                File tempFile = File.createTempFile("print_agent_test", ".pdf");
+                // Build a proper PDF test page (not .txt) so SumatraPDF handles it correctly
+                Map<String, String> testOrder = new HashMap<>();
+                testOrder.put("id", "TEST");
+                testOrder.put("copies", "1");
+                testOrder.put("duplex", "simplex");
+                testOrder.put("colorMode", "bw");
+                testOrder.put("paperSize", "A4");
+                try {
+                    createReceiptPdf(tempFile, "TEST", "Test Print", "test_page.pdf", 1, 1, "A4", "bw", "simplex");
+                } catch (Exception pdfEx) {
+                    System.err.println("Could not generate test PDF, using text fallback: " + pdfEx.getMessage());
+                    tempFile.delete();
+                    tempFile = File.createTempFile("print_agent_test", ".txt");
+                    try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile))) {
+                        writer.write("=========================================\n");
+                        writer.write("       KRISHNA PRINT AGENT TEST PAGE      \n");
+                        writer.write("=========================================\n");
+                        writer.write("Printer Name: " + selectedPrn + "\n");
+                        writer.write("Status      : Communication OK\n");
+                        writer.write("Timestamp   : " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()) + "\n");
+                        writer.write("=========================================\n");
+                        writer.write("Spool test page dispatched successfully.\n");
+                    }
                 }
-                printToWindowsDevice(tempFile, selectedPrn, null);
-                JOptionPane.showMessageDialog(frame, "✓ Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
+                // FIX: Pass selectedPrn directly AND pass a dummy orderParams so settings path is used correctly
+                System.out.println("[Test Print] Sending test page to explicitly selected printer: '" + selectedPrn + "'");
+                printToWindowsDevice(tempFile, selectedPrn, testOrder);
+                JOptionPane.showMessageDialog(frame, "\u2713 Test page sent to: " + selectedPrn, "Printer Test", JOptionPane.INFORMATION_MESSAGE);
                 
+                final File finalTempFile = tempFile;
                 new Thread(() -> {
-                    try { Thread.sleep(5000); tempFile.delete(); } catch(Exception ignored) {}
+                    try { Thread.sleep(10000); finalTempFile.delete(); } catch(Exception ignored) {}
                 }).start();
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(frame, "✗ Spool failed: " + ex.getMessage(), "Printer Test", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(frame, "\u2717 Spool failed: " + ex.getMessage(), "Printer Test", JOptionPane.ERROR_MESSAGE);
             }
         });
 
@@ -863,7 +880,7 @@ public class PrintAgent {
         // Priority 0: Explicit default printer configured in agent settings
         if (DEFAULT_PRINTER != null && !DEFAULT_PRINTER.trim().isEmpty()) {
             String defClean = DEFAULT_PRINTER.trim().toLowerCase();
-            // Exact match
+            // Exact match (case-insensitive)
             for (String raw : locals) {
                 String pName = raw.split("\\|")[0].trim();
                 if (pName.equalsIgnoreCase(DEFAULT_PRINTER.trim())) {
@@ -871,15 +888,28 @@ public class PrintAgent {
                     return pName;
                 }
             }
-            // Contains/partial match (e.g. '5855' or '5845' or 'Xerox')
-            for (String raw : locals) {
-                String pName = raw.split("\\|")[0].trim();
-                String pLower = pName.toLowerCase();
-                if (pLower.contains(defClean) || defClean.contains(pLower)) {
-                    System.out.println("[Printer Routing] Selected configured default printer (fuzzy match): " + pName);
-                    return pName;
+            // FIX: Safe partial/contains match - only match if defClean is at least 4 chars
+            // to avoid short names like '1' matching 'Printer 1' AND 'Printer 10' or other names.
+            // Also only match if the printer name CONTAINS the configured name (not the reverse),
+            // to prevent accidental broad matches.
+            if (defClean.length() >= 4) {
+                for (String raw : locals) {
+                    String pName = raw.split("\\|")[0].trim();
+                    String pLower = pName.toLowerCase();
+                    if (pLower.contains(defClean)) {
+                        System.out.println("[Printer Routing] Selected configured default printer (partial match): " + pName);
+                        return pName;
+                    }
                 }
             }
+            // FIX: DEFAULT_PRINTER was set but NOT found on this PC - log a clear warning
+            // instead of silently routing to an unexpected fallback printer.
+            System.err.println("[Printer Routing] WARNING: Configured default printer '" + DEFAULT_PRINTER + "' was NOT found on this PC!");
+            System.err.println("[Printer Routing] Available local printers:");
+            for (String raw : locals) {
+                System.err.println("  -> " + raw.split("\\|")[0].trim());
+            }
+            System.err.println("[Printer Routing] Please open Settings and re-select the correct printer for this PC.");
         }
 
         for (String raw : locals) {
@@ -1020,11 +1050,14 @@ public class PrintAgent {
 
         // 3. Fallback to physical printer detected directly on Windows
         if (localPhysicalFallback != null) {
+            System.err.println("[Printer Routing] WARNING: No cloud config printer matched this PC. Using first detected physical printer as fallback: " + localPhysicalFallback);
+            System.err.println("[Printer Routing] To fix this, open Settings and set the correct default printer for this PC.");
             return localPhysicalFallback;
         }
 
         // 4. Fallback to any local printer (including virtual/PDF for testing)
         if (localAnyFallback != null) {
+            System.err.println("[Printer Routing] WARNING: No physical printer found. Using any available printer as last resort: " + localAnyFallback);
             return localAnyFallback;
         }
 
